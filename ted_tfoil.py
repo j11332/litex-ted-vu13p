@@ -19,9 +19,11 @@ from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
+from litex.soc.cores.bitbang import I2CMaster
 
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
+# from cores.i2c import I2C
 
 # CRG
 class _CRG(Module):
@@ -82,7 +84,7 @@ class BaseSoC(SoCCore):
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
         
-
+        self.submodules.i2c = I2CMaster(pads = platform.request("i2c_tca9555", 0))
 # Build
 
 def main():
