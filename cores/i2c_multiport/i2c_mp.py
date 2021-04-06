@@ -86,18 +86,21 @@ class I2CMasterMP(Module, AutoCSR):
 
         self.specials.mux = Instance("i2c_mux", **self.mux_params)
         
-        # SCL
-        self.specials += Tristate(Cat([pad.scl for pad in pads]),
-            o  = 0, # I2C uses Pull-ups, only drive low.
-            oe = ~self.downstream_scl_t # Drive when scl is low.
-        )
-            
-        # SDA
-        self.specials += Tristate(Cat([pad.sda for pad in pads]),
-            o  = 0, # I2C uses Pull-ups, only drive low.
-            oe = ~self.downstream_sda_t, # Drive when oe and sda is low.
-            i  = self.downstream_sda_i
-        )
+        for i, pad in enumerate(pads):
+            # SCL
+            self.specials += Tristate(
+                target = pad.scl,
+                o  = self.downstream_scl_o[i], # I2C uses Pull-ups, only drive low.
+                oe = ~self.downstream_scl_t[i] # Drive when scl is low.
+            )
+                
+            # SDA
+            self.specials += Tristate(
+                target = pad.sda,
+                o  = self.downstream_sda_o[i], # I2C uses Pull-ups, only drive low.
+                oe = ~self.downstream_sda_t[i], # Drive when oe and sda is low.
+                i  = self.downstream_sda_i[i]
+            )
 
 class MuxNto1_DUT(Module):
     def __init__(self):

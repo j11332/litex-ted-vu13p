@@ -81,6 +81,10 @@ _io = [
         Subsignal("scl", Pins("J29"),  IOStandard("LVCMOS18"))
     ),
 
+    ("tca9548_reset_n", 3, Pins("BB21"), IOStandard("LVCMOS18")),
+    ("tca9548_reset_n", 2, Pins("BD20"), IOStandard("LVCMOS18")),
+    ("tca9548_reset_n", 1, Pins("AY21"), IOStandard("LVCMOS18")),
+    ("tca9548_reset_n", 0, Pins("AY20"), IOStandard("LVCMOS18")),
     # DDR4 memory channel C0. Only use the first 64 data bits
     ("ddram", 0,
         Subsignal("a", Pins(

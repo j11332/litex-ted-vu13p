@@ -20,7 +20,9 @@ from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
 from litex.soc.cores.bitbang import I2CMaster
+from litex.soc.cores.gpio import GPIOOut
 from cores.i2c_multiport import I2CMasterMP
+
 
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
@@ -67,24 +69,32 @@ class BaseSoC(SoCCore):
         # CRG
         self.submodules.crg = _CRG(platform, sys_clk_freq)
 
-        # DDR4 SDRAM
-        if not self.integrated_main_ram_size:
-            self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
-                memtype          = "DDR4",
-                sys_clk_freq     = sys_clk_freq,
-                iodelay_clk_freq = 400e6)
-            self.add_sdram("sdram",
-                phy           = self.ddrphy,
-                module        = MT40A1G8(sys_clk_freq, "1:4"),
-                size          = 0x40000000,
-                l2_cache_size = kwargs.get("l2_size", 8192)
-            )
+        # # DDR4 SDRAM
+        # if not self.integrated_main_ram_size:
+        #     self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
+        #         memtype          = "DDR4",
+        #         sys_clk_freq     = sys_clk_freq,
+        #         iodelay_clk_freq = 400e6)
+        #     self.add_sdram("sdram",
+        #         phy           = self.ddrphy,
+        #         module        = MT40A1G8(sys_clk_freq, "1:4"),
+        #         size          = 0x40000000,
+        #         l2_cache_size = kwargs.get("l2_size", 8192)
+        #     )
 
         # Leds
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
+        
         i2c_master_pads = [
+            platform.request("i2c_tca9555", 0),
+            platform.request("i2c_tca9555", 1),
+            platform.request("i2c_tca9555", 2),
+            platform.request("i2c_tca9555", 3),
+            platform.request("i2c_tca9555", 4),
+            platform.request("i2c_tca9555", 5),
+            platform.request("i2c_tca9555", 6),
             platform.request("i2c_tca9548", 0),
             platform.request("i2c_tca9548", 1),
             platform.request("i2c_tca9548", 2),
@@ -93,6 +103,8 @@ class BaseSoC(SoCCore):
 
         self.submodules.i2c = I2CMasterMP(platform, i2c_master_pads)
 
+        self.submodules.sb_gpio = GPIOOut(pads = platform.request_all("tca9548_reset_n"))
+        
 # Build
 
 def main():
