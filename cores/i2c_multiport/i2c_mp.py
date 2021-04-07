@@ -101,23 +101,3 @@ class I2CMasterMP(Module, AutoCSR):
                 oe = ~self.downstream_sda_t[i], # Drive when oe and sda is low.
                 i  = self.downstream_sda_i[i]
             )
-
-class MuxNto1_DUT(Module):
-    def __init__(self):
-        self.douts = [Signal() for x in range(8)]
-        self.select = Signal(max=8)
-        self.din = Signal()
-
-        self.submodules.mux = MuxNto1(self.din, self.douts, self.select)
-
-# dut = MuxNto1_DUT()
-# def testbench():
-#     
-#     yield dut.din.eq(0)
-#     
-#     for i in range(8):
-#         yield dut.select.eq(i)
-#         yield
-#     
-# run_simulation(dut, testbench(), vcd_name="test.vcd")
-
