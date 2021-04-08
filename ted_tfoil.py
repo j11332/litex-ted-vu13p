@@ -12,9 +12,7 @@ import argparse
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
-
 from litex_boards.platforms import ted_tfoil
-
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
@@ -54,8 +52,66 @@ class _CRG(Module):
 
         self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
-# BaseSoC
+class MyBuilder(Builder):
+    def __init__(self, soc,
+        # Directories.
+        output_dir       = None,
+        gateware_dir     = None,
+        software_dir     = None,
+        include_dir      = None,
+        generated_dir    = None,
 
+        # Compile Options.
+        compile_software = True,
+        compile_gateware = True,
+
+        # Exports.
+        csr_json         = None,
+        csr_csv          = None,
+        csr_svd          = None,
+        memory_x         = None,
+
+        # BIOS Options.
+        bios_options     = [],
+
+        # Documentation.
+        generate_doc     = False):
+
+        self.soc = soc
+
+        # Directories.
+        self.output_dir    = os.path.abspath(output_dir    or os.path.join("build", soc.platform.name))
+        self.gateware_dir  = os.path.abspath(gateware_dir  or os.path.join(self.output_dir,   "gateware"))
+        self.software_dir  = os.path.abspath(software_dir  or os.path.join(self.output_dir,   "software"))
+        self.include_dir   = os.path.abspath(include_dir   or os.path.join(self.software_dir, "include"))
+        self.generated_dir = os.path.abspath(generated_dir or os.path.join(self.include_dir,  "generated"))
+
+        # Compile Options.
+        self.compile_software = compile_software
+        self.compile_gateware = compile_gateware
+
+        # Exports.
+        self.csr_csv  = csr_csv
+        self.csr_json = csr_json
+        self.csr_svd  = csr_svd
+        self.memory_x = memory_x
+
+        # BIOS Options.
+        self.bios_options = bios_options
+
+        # Documentation
+        self.generate_doc = generate_doc
+
+        # List software packages.
+        self.software_packages = []
+        for name in soc_software_packages:
+            if name == "bios":
+                src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
+                self.add_software_package(name, src_dir = src_dir)
+            else:
+                self.add_software_package(name)
+    
+# BaseSoC
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(200e6), **kwargs):
         platform = ted_tfoil.Platform()
@@ -104,9 +160,8 @@ class BaseSoC(SoCCore):
         self.submodules.i2c = I2CMasterMP(platform, i2c_master_pads)
 
         self.submodules.sb_gpio = GPIOOut(pads = platform.request_all("tca9548_reset_n"))
-        
+ 
 # Build
-
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on tfoil")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
@@ -120,7 +175,7 @@ def main():
         sys_clk_freq = int(float(args.sys_clk_freq)),
         **soc_core_argdict(args)
     )
-    builder = Builder(soc, **builder_argdict(args))
+    builder = MyBuilder(soc, **builder_argdict(args))
     builder.build(run=args.build)
 
     if args.load:
