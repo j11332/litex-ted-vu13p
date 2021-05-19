@@ -147,3 +147,19 @@ static void i2c_scan_handler(int nb_params, char **params)
 }
 define_command(i2c_scan, i2c_scan_handler, "Scan for I2C slaves", I2C_CMDS);
 #endif
+
+#ifdef CSR_I2C_SEL_W_ADDR
+static void i2c_mux_handler(int nb_params, char **params)
+{
+	char *c;
+
+	if (nb_params >= 1) {
+		uint8_t port = strtoul(params[0], &c, 0);
+		printf("I2C Port: %u\n", port);
+		i2c_sel_w_sel_write(port);
+	} else {
+		printf("%s: Invalid argument.\n", __func__);
+	}
+}
+define_command(i2c_mux, i2c_mux_handler, "Select internal I2C port", I2C_CMDS);
+#endif
