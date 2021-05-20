@@ -15,7 +15,7 @@ _io = [
         Subsignal("n", Pins("M27"), IOStandard("DIFF_SSTL12")),
     ),
     ("clk125", 0, Pins("BD16"), IOStandard("LVCMOS18")),
-    
+
     # PSW[0] - Active-low
     ("cpu_resetn", 0, Pins("P36"), IOStandard("LVCMOS12")),
 
@@ -36,55 +36,72 @@ _io = [
     ),
 
     # I2C
-    ("i2c_tca9548", 0, 
+    ("i2c_tca9548", 0,
         Subsignal("sda", Pins("BD21"), IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("BA20"), IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9548", 1, 
+    ("i2c_tca9548", 1,
         Subsignal("sda", Pins("BB19"), IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("BB20"), IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9548", 2, 
+    ("i2c_tca9548", 2,
         Subsignal("sda", Pins("AW21"), IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("BD19"), IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9548", 3, 
+    ("i2c_tca9548", 3,
         Subsignal("sda", Pins("AY22"), IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("BC21"), IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 0, 
+    ("i2c_tca9555", 0,
         Subsignal("sda", Pins("A30"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("A28"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 1, 
+    ("i2c_tca9555", 1,
         Subsignal("sda", Pins("C28"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("B29"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 2, 
+    ("i2c_tca9555", 2,
         Subsignal("sda", Pins("D29"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("E30"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 3, 
+    ("i2c_tca9555", 3,
         Subsignal("sda", Pins("F28"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("F29"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 4, 
+    ("i2c_tca9555", 4,
         Subsignal("sda", Pins("G29"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("G30"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 5, 
+    ("i2c_tca9555", 5,
         Subsignal("sda", Pins("K30"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("J30"),  IOStandard("LVCMOS18"))
     ),
-    ("i2c_tca9555", 6, 
+    ("i2c_tca9555", 6,
         Subsignal("sda", Pins("J31"),  IOStandard("LVCMOS18")),
         Subsignal("scl", Pins("J29"),  IOStandard("LVCMOS18"))
+    ),
+    ("i2c_si5341", 0,
+        Subsignal("sda", Pins("AW20"),  IOStandard("LVCMOS18")),
+        Subsignal("scl", Pins("AW19"),  IOStandard("LVCMOS18"))
+    ),
+    ("i2c_si5341", 1,
+        Subsignal("sda", Pins("AT20"),  IOStandard("LVCMOS18")),
+        Subsignal("scl", Pins("AT19"),  IOStandard("LVCMOS18"))
     ),
 
     ("tca9548_reset_n", 3, Pins("BB21"), IOStandard("LVCMOS18")),
     ("tca9548_reset_n", 2, Pins("BD20"), IOStandard("LVCMOS18")),
     ("tca9548_reset_n", 1, Pins("AY21"), IOStandard("LVCMOS18")),
     ("tca9548_reset_n", 0, Pins("AY20"), IOStandard("LVCMOS18")),
+    ("si5341_in_sel_0", 1, Pins("BA19"), IOStandard("LVCMOS18")),
+    ("si5341_in_sel_0", 0, Pins("BA18"), IOStandard("LVCMOS18")),
+    ("si5341_syncb", 1, Pins("BC19"), IOStandard("LVCMOS18")),
+    ("si5341_syncb", 0, Pins("BC18"), IOStandard("LVCMOS18")),
+    ("si5341_lolb", 1, Pins("AU21"), IOStandard("LVCMOS18")),
+    ("si5341_lolb", 0, Pins("AU19"), IOStandard("LVCMOS18")),
+    ("si5341_rstb", 1, Pins("AU22"), IOStandard("LVCMOS18")),
+    ("si5341_rstb", 0, Pins("AU20"), IOStandard("LVCMOS18")),
+
     # DDR4 memory channel C0. Only use the first 64 data bits
     ("ddram", 0,
         Subsignal("a", Pins(
