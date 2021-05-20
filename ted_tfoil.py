@@ -12,13 +12,14 @@ import argparse
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
+from migen.fhdl.structure import Cat
 from litex_boards.platforms import ted_tfoil
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
 from litex.soc.cores.bitbang import I2CMaster
-from litex.soc.cores.gpio import GPIOOut
+from litex.soc.cores.gpio import GPIOOut, GPIOIn
 from cores.i2c_multiport import I2CMasterMP
 
 
@@ -110,13 +111,13 @@ class MyBuilder(Builder):
                 self.add_software_package(name, src_dir = src_dir)
             else:
                 self.add_software_package(name)
-    
+
 # BaseSoC
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(200e6), **kwargs):
         platform = ted_tfoil.Platform()
 
-        # SoCCore 
+        # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
             ident          = "LiteX SoC on tfoil",
             ident_version  = True,
@@ -142,7 +143,7 @@ class BaseSoC(SoCCore):
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
-        
+
         i2c_master_pads = [
             platform.request("i2c_tca9555", 0),
             platform.request("i2c_tca9555", 1),
@@ -155,12 +156,29 @@ class BaseSoC(SoCCore):
             platform.request("i2c_tca9548", 1),
             platform.request("i2c_tca9548", 2),
             platform.request("i2c_tca9548", 3),
+            platform.request("i2c_si5341", 0),
+            platform.request("i2c_si5341", 1),
         ]
 
         self.submodules.i2c = I2CMasterMP(platform, i2c_master_pads)
 
-        self.submodules.sb_gpio = GPIOOut(pads = platform.request_all("tca9548_reset_n"))
- 
+        self.submodules.sb_tca9548 = GPIOOut(pads = platform.request_all("tca9548_reset_n"))
+
+        sb_si5341_o_pads = Cat([
+            platform.request("si5341_in_sel_0", 0),
+            platform.request("si5341_in_sel_0", 1),
+            platform.request("si5341_syncb", 0),
+            platform.request("si5341_syncb", 1),
+            platform.request("si5341_rstb", 0),
+            platform.request("si5341_rstb", 1),
+        ])
+        sb_si5341_i_pads = Cat([
+            platform.request("si5341_lolb", 0),
+            platform.request("si5341_lolb", 1),
+        ])
+        self.submodules.sb_si5341_o = GPIOOut(pads = sb_si5341_o_pads)
+        self.submodules.sb_si5341_i = GPIOIn(pads = sb_si5341_i_pads)
+
 # Build
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on tfoil")
