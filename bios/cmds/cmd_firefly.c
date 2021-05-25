@@ -12,7 +12,7 @@
 
 #define I2C_SLV_ADDR_SI5341 0x77
 
-#define DELAY_MS(n) cdelay((n)*(CONFIG_CLOCK_FREQUENCY/1000))
+#define DELAY_MS(n) cdelay((n)*(CONFIG_CLOCK_FREQUENCY/4000))
 
 static inline void cdelay(int i)
 {
@@ -92,7 +92,7 @@ static void set_si5341_n_divider_handler(int nb_params, char **params)
 
 	i2c_sel_w_sel_write(device_num + 11);  // i2c_mux set to 11 or 12
 
-  // set page register to 0x03
+	// set page register to 0x03
 	reg_addr = 0x01;
 	data[0] = 0x03;
 	if (!i2c_write(I2C_SLV_ADDR_SI5341, reg_addr, data, 1)) {
@@ -160,7 +160,7 @@ static void get_si5341_n_divider_handler(int nb_params, char **params)
 
 	device_num = strtoul(params[0], &c, 0);
 	if ((*c != 0) || (device_num > 1)) {
-		printf("Incorrect device number (0 or 1)");
+		printf("Incorrect device number (0 - 1)");
 		return;
 	}
 
@@ -174,7 +174,7 @@ static void get_si5341_n_divider_handler(int nb_params, char **params)
 
 	i2c_sel_w_sel_write(device_num + 11);  // i2c_mux set to 11 or 12
 
-  // set page register to 0x03
+	// set page register to 0x03
 	reg_addr = 0x01;
 	data[0] = 0x03;
 	if (!i2c_write(I2C_SLV_ADDR_SI5341, reg_addr, data, 1)) {
