@@ -10,7 +10,10 @@
 #include "../command.h"
 #include "../helpers.h"
 
+#define I2C_SLV_ADDR_TCA9555 0x20
+#define I2C_SLV_ADDR_TCA9548 0x70
 #define I2C_SLV_ADDR_SI5341 0x77
+#define I2C_SLV_ADDR_FIREFLY 0x50
 
 #define DELAY_MS(n) cdelay((n)*(CONFIG_CLOCK_FREQUENCY/4000))
 
@@ -217,4 +220,232 @@ i2c_r_err:
 }
 
 define_command(get_si5341_n_divider, get_si5341_n_divider_handler, "Get N divider of SI5341", FIREFLY_CMDS);
+#endif
+
+/**
+ * Command "reset_tca9548"
+ *
+ * Reset all TCA9548
+ *
+ */
+#ifdef CSR_SB_TCA9548_BASE
+static void reset_tca9548_handler(int nb_params, char **params)
+{
+	sb_tca9548_out_write(0x00);  // assert reset
+	DELAY_MS(500);
+	sb_tca9548_out_write(0x0f);  // de-assert reset
+	return;
+}
+
+define_command(reset_tca9548, reset_tca9548_handler, "Reset all TCA9548", FIREFLY_CMDS);
+#endif
+
+/**
+ * Command "reset_firefly"
+ *
+ * Reset all FireFly modules
+ *
+ */
+#ifdef CSR_I2C_SEL_W_ADDR
+static void reset_firefly_handler(int nb_params, char **params)
+{
+  int i;
+	uint8_t reg_addr, data;
+
+	for (i = 0; i < 7; i++) {
+		i2c_sel_w_sel_write(i);  // set i2c_mux
+
+		// set I/O direction
+		reg_addr = 0x06;
+		data = 0xaa;  // RESET_L->output, INT_L->input, SELECT_L->output, PRESENTL->input
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+		reg_addr = 0x07;
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+
+		// assert FireFly reset
+		reg_addr = 0x02;
+		data = 0xaa;  // RESET_L->L, SELECT_L->L
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+		reg_addr = 0x03;
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+	}
+
+	DELAY_MS(500);
+
+	for (i = 0; i < 7; i++) {
+		i2c_sel_w_sel_write(i);  // set i2c_mux
+
+		// de-assert FireFly reset
+		reg_addr = 0x02;
+		data = 0xbb;  // RESET_L->H, SELECT_L->L
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+		reg_addr = 0x03;
+		if (!i2c_write(I2C_SLV_ADDR_TCA9555, reg_addr, &data, 1)) {
+			goto i2c_w_err;
+		}
+	}
+
+	return;
+
+i2c_w_err:
+	printf("Error during I2C write");
+	return;
+}
+
+define_command(reset_firefly, reset_firefly_handler, "Reset all FireFly modules", FIREFLY_CMDS);
+#endif
+
+// GTY num to i2c_mux / tca9548_reg calculate
+static int gty2mux(uint8_t gty_num, uint8_t *i2c_mux, uint8_t *tca9548_reg)
+{
+	if (!(gty_num >= 120 && gty_num <= 135) && !(gty_num >= 220 && gty_num <= 223) && !(gty_num >= 228 && gty_num <= 235)) {
+		return 1;
+	}
+
+	if (gty_num <= 127) {
+		*i2c_mux = 7;
+		*tca9548_reg = 0x01 << (gty_num - 120);
+	} else if (gty_num <= 135) {
+		*i2c_mux = 8;
+		*tca9548_reg = 0x01 << (gty_num - 128);
+	} else if (gty_num <= 223) {
+		*i2c_mux = 9;
+		*tca9548_reg = 0x01 << (gty_num - 220);
+	} else {
+		*i2c_mux = 10;
+		*tca9548_reg = 0x01 << (gty_num - 228);
+	}
+
+	return 0;
+}
+
+/**
+ * Command "i2c_write_firefly"
+ *
+ * i2c_write for FireFly modules
+ *
+ */
+#ifdef CSR_I2C_SEL_W_ADDR
+static void i2c_write_firefly_handler(int nb_params, char **params)
+{
+	int i;
+	char *c;
+	uint8_t write_params[32];
+	uint8_t gty_num, i2c_mux, tca9548_reg;
+
+	if (nb_params < 2) {
+		printf("i2c_write_firefly <GTY number> <reg addr> [<data>, ...]");
+		return;
+	}
+
+	gty_num = strtoul(params[0], &c, 0);
+	if ((*c != 0) || gty2mux(gty_num, &i2c_mux, &tca9548_reg)) {
+		printf("Incorrect GTY number (120-135, 220-223, 228-235)");
+		return;
+	}
+addr
+	if (nb_params - 1 > sizeof(write_params)) {
+		printf("Max data length is %zu", sizeof(write_params));
+		return;
+	}
+
+	for (i = 1; i < nb_params; i++) {
+		write_params[i] = strtoul(params[i], &c, 0);
+		if (*c != 0) {
+			printf("Incorrect value of parameter %d", i);
+			return;
+		}
+	}
+
+	i2c_sel_w_sel_write(i2c_mux);  // set i2c_mux
+
+  // set TCA9548 selector
+	if (!i2c_write(I2C_SLV_ADDR_TCA9548, tca9548_reg, 0, 0)) {
+		goto i2c_w_err;
+	}
+
+	// i2c_write to FireFly module
+	if (!i2c_write(I2C_SLV_ADDR_FIREFLY, write_params[0], &write_params[1], nb_params - 2)) {
+		goto i2c_w_err;
+	}
+
+i2c_w_err:
+	printf("Error during I2C write");
+	return;
+}
+
+define_command(i2c_write_firefly, i2c_write_firefly_handler, "i2c_write for FireFly modules", FIREFLY_CMDS);
+#endif
+
+/**
+ * Command "i2c_read_firefly"
+ *
+ * i2c_read for FireFly modules
+ *
+ */
+#ifdef CSR_I2C_SEL_W_ADDR
+static void i2c_read_firefly_handler(int nb_params, char **params)
+{
+	char *c;
+	int len = 1;
+	uint8_t buf[256];
+	uint8_t gty_num, i2c_mux, tca9548_reg, reg_addr;
+
+	if (nb_params < 2) {
+		printf("i2c_read_firefly <GTY number> <reg addr> [<len>]");
+		return;
+	}
+
+	gty_num = strtoul(params[0], &c, 0);
+	if ((*c != 0) || gty2mux(gty_num, &i2c_mux, &tca9548_reg)) {
+		printf("Incorrect GTY number (120-135, 220-223, 228-235)");
+		return;
+	}
+
+	reg_addr = strtoul(params[1], &c, 0);
+	if (*c != 0) {
+		printf("Incorrect register address");
+		return;
+	}
+
+  if (nb_params > 2) {
+		len = strtoul(params[2], &c, 0);
+		if (*c != 0) {
+			printf("Incorrect data length");
+			return;
+		}
+		if (len > sizeof(buf)) {
+			printf("Max data count is %zu", sizeof(buf));
+			return;
+		}
+	}
+
+	i2c_sel_w_sel_write(i2c_mux);  // set i2c_mux
+
+  // set TCA9548 selector
+	if (!i2c_write(I2C_SLV_ADDR_TCA9548, tca9548_reg, 0, 0)) {
+		printf("Error during I2C write");
+		return;
+	}
+
+	// i2c_read from FireFly module
+	if (!i2c_read(I2C_SLV_ADDR_FIREFLY, reg_addr, buf, len, true)) {
+		printf("Error during I2C read");
+		return;
+	}
+
+	dump_bytes((unsigned int *) buf, len, reg_addr);
+}
+
+define_command(i2c_read_firefly, i2c_read_firefly_handler, "i2c_read for FireFly modules", FIREFLY_CMDS);
 #endif
