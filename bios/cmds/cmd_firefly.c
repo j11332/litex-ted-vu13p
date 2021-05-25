@@ -103,7 +103,7 @@ static void set_si5341_n_divider_handler(int nb_params, char **params)
 
 	// set divider N numerator
 	reg_addr = 0x02 + reg_offset;
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 4; i++) {
 		data[i] = (n_num_l >> (i * 8)) & 0xff;
 	}
 	data[4] = n_num_h & 0xff;
