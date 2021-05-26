@@ -340,8 +340,8 @@ static void i2c_write_firefly_handler(int nb_params, char **params)
 {
 	int i;
 	char *c;
-	uint8_t write_params[32];
-	uint8_t gty_num, i2c_mux, tca9548_reg;
+	uint8_t data[32];
+	uint8_t gty_num, i2c_mux, tca9548_reg, reg_addr, data_len;
 
 	if (nb_params < 2) {
 		printf("i2c_write_firefly <GTY number> <reg addr> [<data>, ...]");
@@ -353,16 +353,24 @@ static void i2c_write_firefly_handler(int nb_params, char **params)
 		printf("Incorrect GTY number (120-135, 220-223, 228-235)");
 		return;
 	}
-addr
-	if (nb_params - 1 > sizeof(write_params)) {
-		printf("Max data length is %zu", sizeof(write_params));
+
+	reg_addr = strtoul(params[1], &c, 0);
+	if (*c != 0) {
+		printf("Incorrect register address");
 		return;
 	}
 
-	for (i = 1; i < nb_params; i++) {
-		write_params[i] = strtoul(params[i], &c, 0);
+	data_len = nb_params - 2;
+
+	if (data_len > sizeof(data)) {
+		printf("Max data length is %zu", sizeof(data));
+		return;
+	}
+
+	for (i = 0; i < data_len; i++) {
+		data[i] = strtoul(params[i + 2], &c, 0);
 		if (*c != 0) {
-			printf("Incorrect value of parameter %d", i);
+			printf("Incorrect value of data %d", i);
 			return;
 		}
 	}
@@ -375,9 +383,11 @@ addr
 	}
 
 	// i2c_write to FireFly module
-	if (!i2c_write(I2C_SLV_ADDR_FIREFLY, write_params[0], &write_params[1], nb_params - 2)) {
+	if (!i2c_write(I2C_SLV_ADDR_FIREFLY, reg_addr, data, data_len)) {
 		goto i2c_w_err;
 	}
+
+	return;
 
 i2c_w_err:
 	printf("Error during I2C write");
