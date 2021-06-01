@@ -114,7 +114,7 @@ class MyBuilder(Builder):
 
 # BaseSoC
 class BaseSoC(SoCCore):
-    def __init__(self, sys_clk_freq=int(200e6), **kwargs):
+    def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
         platform = ted_tfoil.Platform()
 
         # SoCCore
@@ -126,18 +126,20 @@ class BaseSoC(SoCCore):
         # CRG
         self.submodules.crg = _CRG(platform, sys_clk_freq)
 
-        # # DDR4 SDRAM
-        # if not self.integrated_main_ram_size:
-        #     self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
-        #         memtype          = "DDR4",
-        #         sys_clk_freq     = sys_clk_freq,
-        #         iodelay_clk_freq = 400e6)
-        #     self.add_sdram("sdram",
-        #         phy           = self.ddrphy,
-        #         module        = MT40A1G8(sys_clk_freq, "1:4"),
-        #         size          = 0x40000000,
-        #         l2_cache_size = kwargs.get("l2_size", 8192)
-        #     )
+        # DDR4 SDRAM
+        print(kwargs)
+        if not disable_sdram:
+            if not self.integrated_main_ram_size:
+                self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
+                    memtype          = "DDR4",
+                    sys_clk_freq     = sys_clk_freq,
+                    iodelay_clk_freq = 400e6)
+                self.add_sdram("sdram",
+                    phy           = self.ddrphy,
+                    module        = MT40A1G8(sys_clk_freq, "1:4"),
+                    size          = 0x40000000,
+                    l2_cache_size = kwargs.get("l2_size", 8192)
+                )
 
         # Leds
         self.submodules.leds = LedChaser(
@@ -185,11 +187,13 @@ def main():
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
     parser.add_argument("--load",         action="store_true", help="Load bitstream")
     parser.add_argument("--sys-clk-freq", default=200e6,       help="System clock frequency (default: 200MHz)")
+    parser.add_argument("--disable_sdram", action="store_true", help="Build without onboard memory controller (default: false)")
     builder_args(parser)
     soc_core_args(parser)
     args = parser.parse_args()
 
     soc = BaseSoC(
+        disable_sdram = True if args.disable_sdram else False,
         sys_clk_freq = int(float(args.sys_clk_freq)),
         **soc_core_argdict(args)
     )
