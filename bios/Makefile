@@ -19,7 +19,8 @@ OBJECTS = isr.o			\
 	  cmd_liteeth.o		\
 	  cmd_litesdcard.o  \
 	  cmd_litesata.o    \
-		cmd_firefly.o  \
+	  cmd_firefly.o  \
+	  util.o \
 	  main.o
 
 ifneq "$(or $(TERM_NO_COMPLETE),$(TERM_MINI))" ""
