@@ -91,3 +91,8 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Vivado
+vivado_*.log
+vivado_*.jou
+.Xil

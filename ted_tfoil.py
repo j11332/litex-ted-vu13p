@@ -105,12 +105,16 @@ class MyBuilder(Builder):
 
         # List software packages.
         self.software_packages = []
+        self.software_libraries = []
         for name in soc_software_packages:
             if name == "bios":
                 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
                 self.add_software_package(name, src_dir = src_dir)
             else:
                 self.add_software_package(name)
+            if name == "libbase":
+                name += "-nofloat"
+            self.add_software_library(name)
 
 # BaseSoC
 class BaseSoC(SoCCore):
