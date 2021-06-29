@@ -49,7 +49,7 @@ o_txprgdivresetdone_out   #output wire [3 : 0] txprgdivresetdone_out;
 class Open(Signal): pass
 
 class USPGTY(Module):
-    def __init__(self, platform, name, hss_pads, gtrefclk):
+    def __init__(self, platform, name, pads, phy_pads):
         self.name = name
         self.platform = platform
         self.ip_params = {
@@ -72,29 +72,29 @@ class USPGTY(Module):
             "CONFIG.TX_OUTCLK_SOURCE"   : "TXPROGDIVCLK",
             "CONFIG.TX_REFCLK_FREQUENCY"    : "161.1328125"
         }
+        gtrefclk = pads['gtrefclk']
         if isinstance(gtrefclk, Record):
+            self.gtrefclk = Signal()
             self.specials.refclk_buf = Instance("IBUFDS_GTE4", "refclk_buf",
-                                                i_I = gtrefclk.p, i_IB = gtrefclk.n,
-                                                i_CEB = 0b0, o_O = self.gtrefclk)
+                    i_I = gtrefclk.p, i_IB = gtrefclk.n,
+                    i_CEB = 0b0, o_O = self.gtrefclk)
         else:
             self.gtrefclk = gtrefclk
         
+        self.hs = pads['hs']  
         self.lane_count = 4
-        self.txuserclk = Signal()
-        self.rxuserclk = Signal()
-        self.clk100 = Signal()
-        self.gtrefclk = Signal()
         self.gt_rst = Signal()
-        self.rxpath_reset = Signal()
-        self.tx_ready = Signal()
-        self.rx_ready = Signal()
-        self.tx_userdata = Signal(256)
-        self.rx_userdata = Signal(256)
-        self.hs_rx = hss_pads.rx
-        self.hs_tx = hss_pads.tx
-        self.tx_header = Signal(6 * self.lane_count)
-        self.rx_header = Signal(6 * self.lane_count)
-        self.rx_slip = Signal(self.lane_count)
+        self.txuserclk = phy_pads.TXCLK
+        self.rxuserclk = phy_pads.RXCLK
+        self.clk100 = ClockSignal("sys")
+        self.rxpath_reset = phy_pads.RXPATH_RST
+        self.tx_ready = ~phy_pads.TXRST
+        self.rx_ready = ~phy_pads.RXRST
+        self.tx_userdata = phy_pads.TXS
+        self.rx_userdata = phy_pads.RXS
+        self.tx_header = phy_pads.TXHDR
+        self.rx_header = phy_pads.RXHDR
+        self.rx_slip = phy_pads.RXSLIP
                         
         self.ip_ports = dict(
             i_gtwiz_userclk_tx_reset_in = 0b0,
@@ -121,14 +121,14 @@ class USPGTY(Module):
             i_gtrefclk00_in = self.gtrefclk,
             o_qpll0outclk_out = Open(),
             o_qpll0outrefclk_out = Open(),
-            i_gtyrxn_in = self.hs_rx.n,
-            i_gtyrxp_in = self.hs_rx.p,
+            i_gtyrxn_in = self.hs.rxn,
+            i_gtyrxp_in = self.hs.rxp,
             i_rxgearboxslip_in = self.rx_slip,
             i_txheader_in = self.tx_header,
             i_txsequence_in = None,
             o_gtpowergood_out = Open(),
-            o_gtytxn_out = self.hs_tx.n,
-            o_gtytxp_out = self.hs_tx.p,
+            o_gtytxn_out = self.hs.txn,
+            o_gtytxp_out = self.hs.txp,
             o_rxdatavalid_out = Open(),
             o_rxheader_out = self.rx_header,
             o_rxheadervalid_out = Open(),

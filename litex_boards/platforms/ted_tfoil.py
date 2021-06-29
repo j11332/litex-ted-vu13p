@@ -14,6 +14,14 @@ _io = [
         Subsignal("p", Pins("N27"), IOStandard("DIFF_SSTL12")),
         Subsignal("n", Pins("M27"), IOStandard("DIFF_SSTL12")),
     ),
+    ("MGTREFCLK0_120", 0, Subsignal("n", Pins("BD40")), Subsignal("p", Pins("BD39"))),
+    ("GTY120", 0,
+        Subsignal("txp", Pins("BH39 BF39 BJ37 BG37")),
+        Subsignal("txn", Pins("BH40 BF40 BJ38 BG38")),
+        Subsignal("rxp", Pins("BG32 BF34 BJ32 BH34")),
+        Subsignal("rxn", Pins("BG33 BF35 BJ33 BH35")),
+    ),
+
     ("clk125", 0, Pins("BD16"), IOStandard("LVCMOS18")),
 
     # PSW[0] - Active-low

@@ -21,7 +21,7 @@ from litex.soc.cores.led import LedChaser
 from litex.soc.cores.bitbang import I2CMaster
 from litex.soc.cores.gpio import GPIOOut, GPIOIn
 from cores.i2c_multiport import I2CMasterMP
-from cores.kyokko.phy import phy_usp_gty
+from cores.kyokko.kyokko import Kyokko
 
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
@@ -131,7 +131,10 @@ class BaseSoC(SoCCore):
         # CRG
         self.submodules.crg = _CRG(platform, sys_clk_freq)
         
-        self.submodules.gty4 = phy_usp_gty.USPGTY(platform, "gty4_inst")
+        kk_pads = dict(
+            gtrefclk = platform.request("MGTREFCLK0_120"),
+            hs = platform.request("GTY120"))
+        self.submodules.kk = Kyokko(platform, kk_pads)
         
 # Build
 def main():
