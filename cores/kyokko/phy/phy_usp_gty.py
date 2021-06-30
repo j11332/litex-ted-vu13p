@@ -83,10 +83,8 @@ class USPGTY(Module):
         
         self.hs = pads['hs']  
         self.lane_count = 4
-        self.gt_rst = Signal()
         self.txuserclk = phy_pads.TXCLK
         self.rxuserclk = phy_pads.RXCLK
-        self.clk100 = ClockSignal("sys")
         self.rxpath_reset = phy_pads.RXPATH_RST
         self.tx_ready = ~phy_pads.TXRST
         self.rx_ready = ~phy_pads.RXRST
@@ -107,8 +105,8 @@ class USPGTY(Module):
             o_gtwiz_userclk_rx_usrclk_out = Open(),
             o_gtwiz_userclk_rx_usrclk2_out = self.rxuserclk,
             o_gtwiz_userclk_rx_active_out = Open(),
-            i_gtwiz_reset_clk_freerun_in = self.clk100,
-            i_gtwiz_reset_all_in = self.gt_rst,
+            i_gtwiz_reset_clk_freerun_in = ClockSignal("clk100"),
+            i_gtwiz_reset_all_in = ResetSignal("clk100"),
             i_gtwiz_reset_tx_pll_and_datapath_in = 0b0,
             i_gtwiz_reset_tx_datapath_in = 0b0,
             i_gtwiz_reset_rx_pll_and_datapath_in = 0b0,

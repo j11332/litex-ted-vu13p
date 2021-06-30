@@ -1,0 +1,3 @@
+[submodule "cores/kyokko/rtl"]
+	path = cores/kyokko/rtl
+	url = git@github.com:j11332/kyokko.git

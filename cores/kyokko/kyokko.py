@@ -31,20 +31,20 @@ class Kyokko(Module):
         # # #
         phy_if = Record(_ky_phy_layout(bond_ch))
         self.kyokko_params = dict(
-            p_BondingCh = bond_ch,
-            i_CLK = Signal(),
-            i_CLK100 = ClockSignal("sys"),
-            i_RXCLK = phy_if.RXCLK,
-            i_TXCLK = phy_if.TXCLK,
-            i_RXRST = phy_if.RXRST,
-            i_TXRST = phy_if.TXRST,
-            o_CH_UP = phy_if.CH_UP,
-            i_RXHDR = phy_if.RXHDR,
-            i_RXS = phy_if.RXS,
-            o_RXSLIP = phy_if.RXSLIP,
+            p_BondingCh  = bond_ch,
+            i_CLK        = ClockSignal("clk100"),
+            i_CLK100     = ClockSignal("clk100"),
+            i_RXCLK      = phy_if.RXCLK,
+            i_TXCLK      = phy_if.TXCLK,
+            i_RXRST      = phy_if.RXRST,
+            i_TXRST      = phy_if.TXRST,
+            o_CH_UP      = phy_if.CH_UP,
+            i_RXHDR      = phy_if.RXHDR,
+            i_RXS        = phy_if.RXS,
+            o_RXSLIP     = phy_if.RXSLIP,
             o_RXPATH_RST = phy_if.RXPATH_RST,
-            o_TXHDR = phy_if.TXHDR,
-            o_TXS = phy_if.TXS
+            o_TXHDR      = phy_if.TXHDR,
+            o_TXS        = phy_if.TXS
         )
 
         # TX User I/F
@@ -93,8 +93,33 @@ class Kyokko(Module):
         print(pads)
         self.submodules.phy = USPGTY(platform, "phy", pads, phy_if)
     
+    @staticmethod
+    def add_sources(platform):
+        srcdir = os.path.join(os.path.dirname(__file__), "verilog")
+        platform.add_sources(srcdir,
+            "byte-reverse8.v",
+            "gt-rst.v",
+            "kyokko-cb.v",
+            "kyokko-rx-axis.v",
+            "kyokko-rx-cb.v",
+            "kyokko-rx-ctrl.v",
+            "kyokko-rx-init.v",
+            "kyokko-tx-ctrl.v",
+            "kyokko-tx-data.v",
+            "kyokko-tx-init.v",
+            "kyokko-tx-nfc.v",
+            "kyokko-tx-ufc.v",
+            "kyokko.v",
+            "rxpath-rst.v",
+            "teng-sc.v")
+        
     def do_finalize(self):
-        self.specials += Instance("kyokko-cb", **self.kyokko_params)
-        # srcdir = os.path.join(os.path.dirname(__file__), "rtl")
-        # platform.add_sources(srcdir, "kyokko-cb.sv")
+        self.specials += [
+            Instance("kyokko-cb", **self.kyokko_params),
+            Instance("gt_rst", 
+                i_CLK    = ClockSignal("clk100"),
+                i_RST    = ResetSignal("sys"),
+                o_GT_RST = ResetSignal("clk100")
+            )
+        ]
 
