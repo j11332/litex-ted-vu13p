@@ -75,9 +75,14 @@ class USPGTY(Module):
         gtrefclk = pads['gtrefclk']
         if isinstance(gtrefclk, Record):
             self.gtrefclk = Signal()
-            self.specials.refclk_buf = Instance("IBUFDS_GTE4", "refclk_buf",
-                    i_I = gtrefclk.p, i_IB = gtrefclk.n,
-                    i_CEB = 0b0, o_O = self.gtrefclk)
+            self.specials.refclk_buf = Instance(
+                "IBUFDS_GTE4",
+                name="refclk_buf",
+                i_I = gtrefclk.p,
+                i_IB = gtrefclk.n,
+                i_CEB = 0b0,
+                o_O = self.gtrefclk
+            )
         else:
             self.gtrefclk = gtrefclk
         

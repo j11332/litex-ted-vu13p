@@ -14,16 +14,53 @@ _io = [
         Subsignal("p", Pins("N27"), IOStandard("DIFF_SSTL12")),
         Subsignal("n", Pins("M27"), IOStandard("DIFF_SSTL12")),
     ),
-    ("MGTREFCLK0_120", 0, Subsignal("n", Pins("BD40")), Subsignal("p", Pins("BD39"))),
-    ("GTY120", 0,
-        Subsignal("txp", Pins("BH39 BF39 BJ37 BG37")),
-        Subsignal("txn", Pins("BH40 BF40 BJ38 BG38")),
-        Subsignal("rxp", Pins("BG32 BF34 BJ32 BH34")),
-        Subsignal("rxn", Pins("BG33 BF35 BJ33 BH35")),
-    ),
-
     ("clk125", 0, Pins("BD16"), IOStandard("LVCMOS18")),
-
+    # GTY120 / X0Y0
+    ("MGTREFCLK_120_", 0, # UNIV
+        Subsignal("n", Pins("BD40")), 
+        Subsignal("p", Pins("BD39"))
+    ),
+    ("MGTREFCLK_120_", 1, # UNIV 
+        Subsignal("n", Pins("BC42")), 
+        Subsignal("p", Pins("BC41"))
+    ),
+    ("GTY120", 0,
+        Subsignal("rxn", Pins("BG33 BF35 BJ33 BH35")),
+        Subsignal("rxp", Pins("BG32 BF34 BJ32 BH34")),
+        Subsignal("txn", Pins("BH40 BF40 BJ38 BG38")),
+        Subsignal("txp", Pins("BH39 BF39 BJ37 BG37")),
+    ),
+    # GTY121 / X1Y1
+    ("MGTREFCLK_121_", 0, # Clock Gen.
+        Subsignal("n", Pins("BB40")),
+        Subsignal("p", Pins("BB39")),
+    ),
+    ("MGTREFCLK_121_", 1, # COAX.
+        Subsignal("n", Pins("BA42")),
+        Subsignal("p", Pins("BA41")),
+    ),
+    ("GTY121", 0,
+        Subsignal("rxn", Pins("BK35 BL33 BL47 BJ47")),
+        Subsignal("rxp", Pins("BK34 BL32 BL46 BJ46")),
+        Subsignal("txn", Pins("BL38 BK40 BL42 BK44")),
+        Subsignal("txp", Pins("BL37 BK39 BL41 BK43")),
+    ),
+    #
+    ("MGTREFCLK_122_", 0,
+        Subsignal("N", Pins("AY40")),
+        Subsignal("P", Pins("AY39")),
+    ),
+    ("MGTREFCLK_122_", 1,
+        Subsignal("N", Pins("AW42")),
+        Subsignal("P", Pins("AW41")),
+    ),
+    ("GTY122", 0,
+        Subsignal("RXN", Pins("BH49 BG51 BG47 BF49")),
+        Subsignal("RXP", Pins("BH48 BG50 BG46 BF48")),
+        Subsignal("TXN", Pins("BG42 BJ42 BH44 BF44")),
+        Subsignal("TXP", Pins("BG41 BJ41 BH43 BF43")),
+    ),
+    
     # PSW[0] - Active-low
     ("cpu_resetn", 0, Pins("P36"), IOStandard("LVCMOS12")),
 
@@ -163,6 +200,25 @@ _connectors = []
 class Platform(XilinxPlatform):
     default_clk_name   = "sys_clk_0"
     default_clk_period = 1e9/200e6
+    ip_presets = {
+        "ibert": {
+            "CONFIG.C_SYSCLK_FREQUENCY"             : "200",
+            "CONFIG.C_SYSCLK_IO_PIN_LOC_N"          : "BF22",
+            "CONFIG.C_SYSCLK_IO_PIN_LOC_P"          : "BE22",
+            "CONFIG.C_SYSCLK_IS_DIFF"               : "1",
+            "CONFIG.C_SYSCLK_IO_PIN_STD"            : "DIFF_SSTL12",
+            "CONFIG.C_SYSCLK_MODE_EXTERNAL"         : "1",
+            "CONFIG.C_SYSCLOCK_SOURCE_INT"          : "External",
+            "CONFIG.C_REFCLK_SOURCE_QUAD_1"         : "MGTREFCLK0_121",
+            "CONFIG.C_REFCLK_SOURCE_QUAD_0"         : "MGTREFCLK0_121",
+            "CONFIG.C_PROTOCOL_QUAD1"               : "Custom_1_/_28.021_Gbps",
+            "CONFIG.C_PROTOCOL_QUAD0"               : "Custom_1_/_28.021_Gbps",
+            "CONFIG.C_GT_CORRECT"                   : "true",
+            "CONFIG.C_PROTOCOL_QUAD_COUNT_1"        : "2",
+            "CONFIG.C_PROTOCOL_REFCLK_FREQUENCY_1"  : "161.0402299",
+            "CONFIG.C_PROTOCOL_MAXLINERATE_1"       : "28.021",
+        }
+    }
 
     def __init__(self):
         XilinxPlatform.__init__(self, "xcvu13p-flga2577-2-e", _io, _connectors, toolchain="vivado")
@@ -185,12 +241,8 @@ class Platform(XilinxPlatform):
         self.add_platform_command("set_property BITSTREAM.GENERAL.COMPRESS TRUE         [current_design]")
         self.add_platform_command("set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES      [current_design]")
 
-        # DDR4 memory channel C1 Internal Vref
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 61]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 62]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 63]")
-
-        # DDR4 memory channel C2 Internal Vref
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 73]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 74]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 75]")
+        # DDR4 memory channel C1, C2 Internal Vref
+        for bank in ["61", "62", "63", "73", "74", "75"]:
+            self.add_platform_command(
+                f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]"
+            )
