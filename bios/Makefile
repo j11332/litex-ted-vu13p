@@ -19,8 +19,7 @@ OBJECTS = isr.o			\
 	  cmd_liteeth.o		\
 	  cmd_litesdcard.o  \
 	  cmd_litesata.o    \
-	  cmd_firefly.o  \
-	  util.o \
+	  cmd_firefly.o     \
 	  main.o
 
 ifneq "$(or $(TERM_NO_COMPLETE),$(TERM_MINI))" ""
@@ -56,28 +55,17 @@ endif
 
 bios.elf: $(BIOS_DIRECTORY)/linker.ld $(OBJECTS)
 
+vpath %.a $(PACKAGES:%=../%)
 
-%.elf: ../libbase/crt0.o \
-	../libcompiler_rt/libcompiler_rt.a \
-	../libbase/libbase-nofloat.a \
-	../liblitedram/liblitedram.a \
-	../libliteeth/libliteeth.a \
-	../liblitespi/liblitespi.a \
-	../libfatfs/libfatfs.a \
-	../liblitesdcard/liblitesdcard.a \
-	../liblitesata/liblitesata.a
-	$(LD) $(LDFLAGS) -T $(BIOS_DIRECTORY)/linker.ld -N -o $@ \
+%.elf: ../libbase/crt0.o $(LIBS:%=%.a)
+	$(CC) $(LDFLAGS) -T $(BIOS_DIRECTORY)/linker.ld -N -o $@ \
 		../libbase/crt0.o \
 		$(OBJECTS) \
-		-L../libcompiler_rt \
-		-L../libbase \
-		-L../liblitedram \
-		-L../libliteeth \
-		-L../liblitespi \
-		-L../libfatfs \
-		-L../liblitesdcard \
-		-L../liblitesata \
-		-llitedram -lliteeth -llitespi -lfatfs -llitesdcard -llitesata -lbase-nofloat -lcompiler_rt
+		$(PACKAGES:%=-L../%) \
+		-Wl,--whole-archive \
+		-Wl,--gc-sections \
+		$(LIBS:lib%=-l%) \
+
 
 ifneq ($(OS),Windows_NT)
 	chmod -x $@

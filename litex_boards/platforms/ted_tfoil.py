@@ -202,21 +202,19 @@ class Platform(XilinxPlatform):
     default_clk_period = 1e9/200e6
     ip_presets = {
         "ibert": {
-            "CONFIG.C_SYSCLK_FREQUENCY"             : "200",
-            "CONFIG.C_SYSCLK_IO_PIN_LOC_N"          : "BF22",
-            "CONFIG.C_SYSCLK_IO_PIN_LOC_P"          : "BE22",
-            "CONFIG.C_SYSCLK_IS_DIFF"               : "1",
-            "CONFIG.C_SYSCLK_IO_PIN_STD"            : "DIFF_SSTL12",
-            "CONFIG.C_SYSCLK_MODE_EXTERNAL"         : "1",
-            "CONFIG.C_SYSCLOCK_SOURCE_INT"          : "External",
+            "CONFIG.C_SYSCLK_FREQUENCY"             : "125",
+            "CONFIG.C_SYSCLK_IO_PIN_LOC_N"          : "UNASSIGNED",
+            "CONFIG.C_SYSCLK_IO_PIN_LOC_P"          : "BD16",
+            "CONFIG.C_SYSCLK_IS_DIFF"               : "0",
+            "CONFIG.C_SYSCLK_IO_PIN_STD"            : "LVCMOS18",
             "CONFIG.C_REFCLK_SOURCE_QUAD_1"         : "MGTREFCLK0_121",
             "CONFIG.C_REFCLK_SOURCE_QUAD_0"         : "MGTREFCLK0_121",
-            "CONFIG.C_PROTOCOL_QUAD1"               : "Custom_1_/_28.021_Gbps",
-            "CONFIG.C_PROTOCOL_QUAD0"               : "Custom_1_/_28.021_Gbps",
+            "CONFIG.C_PROTOCOL_QUAD1"               : "Custom_1_/_25.78125_Gbps",
+            "CONFIG.C_PROTOCOL_QUAD0"               : "Custom_1_/_25.78125_Gbps",
             "CONFIG.C_GT_CORRECT"                   : "true",
             "CONFIG.C_PROTOCOL_QUAD_COUNT_1"        : "2",
-            "CONFIG.C_PROTOCOL_REFCLK_FREQUENCY_1"  : "161.0402299",
-            "CONFIG.C_PROTOCOL_MAXLINERATE_1"       : "28.021",
+            "CONFIG.C_PROTOCOL_REFCLK_FREQUENCY_1"  : "161.1328125",
+            "CONFIG.C_PROTOCOL_MAXLINERATE_1"       : "25.78125",
         }
     }
 

@@ -7,7 +7,6 @@
 #include <i2c.h>
 #include <generated/csr.h>
 
-#include "../util.h"
 #include "../command.h"
 #include "../helpers.h"
 
@@ -204,10 +203,10 @@ static void get_si5341_n_divider_handler(int nb_params, char **params)
 		n_den = (n_den << 8) | (data[i] & 0xff);
 	}
 
-	printf("device_num = %u, divider_num=%u\n", device_num, divider_num);
-	printf("n_num_h = 0x%03x\n", n_num_h);
-	printf("n_num_l = 0x%08x\n", n_num_l);
-	printf("n_den = 0x%08x\n", n_den);
+	printf("device_num=%u, divider_num=%u\n", device_num, divider_num);
+	printf("n_num_h=0x%03x\n", n_num_h);
+	printf("n_num_l=0x%08x\n", n_num_l);
+	printf("n_den=0x%08x\n", n_den);
 
 	return;
 
@@ -250,7 +249,7 @@ define_command(reset_tca9548, reset_tca9548_handler, "Reset all TCA9548", FIREFL
 #ifdef CSR_I2C_SEL_W_ADDR
 static void reset_firefly_handler(int nb_params, char **params)
 {
-  	int i;
+  int i;
 	uint8_t reg_addr, data;
 
 	for (i = 0; i < 7; i++) {
@@ -306,6 +305,30 @@ i2c_w_err:
 define_command(reset_firefly, reset_firefly_handler, "Reset all FireFly modules", FIREFLY_CMDS);
 #endif
 
+// GTY num to i2c_mux / tca9548_reg calculate
+static int gty2mux(uint8_t gty_num, uint8_t *i2c_mux, uint8_t *tca9548_reg)
+{
+	if (!(gty_num >= 120 && gty_num <= 135) && !(gty_num >= 220 && gty_num <= 223) && !(gty_num >= 228 && gty_num <= 235)) {
+		return 1;
+	}
+
+	if (gty_num <= 127) {
+		*i2c_mux = 7;
+		*tca9548_reg = 0x01 << (gty_num - 120);
+	} else if (gty_num <= 135) {
+		*i2c_mux = 8;
+		*tca9548_reg = 0x01 << (gty_num - 128);
+	} else if (gty_num <= 223) {
+		*i2c_mux = 9;
+		*tca9548_reg = 0x01 << (gty_num - 220);
+	} else {
+		*i2c_mux = 10;
+		*tca9548_reg = 0x01 << (gty_num - 228);
+	}
+
+	return 0;
+}
+
 /**
  * Command "i2c_write_firefly"
  *
@@ -354,7 +377,7 @@ static void i2c_write_firefly_handler(int nb_params, char **params)
 
 	i2c_sel_w_sel_write(i2c_mux);  // set i2c_mux
 
-  	// set TCA9548 selector
+  // set TCA9548 selector
 	if (!i2c_write(I2C_SLV_ADDR_TCA9548, tca9548_reg, 0, 0)) {
 		goto i2c_w_err;
 	}
@@ -405,7 +428,7 @@ static void i2c_read_firefly_handler(int nb_params, char **params)
 		return;
 	}
 
-	if (nb_params > 2) {
+  if (nb_params > 2) {
 		len = strtoul(params[2], &c, 0);
 		if (*c != 0) {
 			printf("Incorrect data length");
@@ -419,7 +442,7 @@ static void i2c_read_firefly_handler(int nb_params, char **params)
 
 	i2c_sel_w_sel_write(i2c_mux);  // set i2c_mux
 
-	// set TCA9548 selector
+  // set TCA9548 selector
 	if (!i2c_write(I2C_SLV_ADDR_TCA9548, tca9548_reg, 0, 0)) {
 		printf("Error during I2C write");
 		return;

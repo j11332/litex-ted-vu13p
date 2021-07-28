@@ -107,6 +107,7 @@ class MyBuilder(Builder):
         # List software packages.
         self.software_packages = []
         self.software_libraries = []
+
         for name in soc_software_packages:
             if name == "bios":
                 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
@@ -116,6 +117,16 @@ class MyBuilder(Builder):
             if name == "libbase":
                 name += "-nofloat"
             self.add_software_library(name)
+
+    def add_software_package(self, name, src_dir=None):
+        if name == "bios":
+            src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
+
+        if src_dir is None:
+            src_dir = os.path.join(soc_directory, "software", name)
+        
+        self.software_packages.append((name, src_dir))
+
 
 # BaseSoC
 class BaseSoC(SoCCore):
@@ -192,7 +203,8 @@ class BaseSoC(SoCCore):
                 [platform.request("MGTREFCLK_120_", 0), platform.request("MGTREFCLK_120_", 1)],
                 [platform.request("MGTREFCLK_121_", 0), platform.request("MGTREFCLK_121_", 1)],
             ],
-            [platform.request("GTY120"), platform.request("GTY121")]
+            [platform.request("GTY120"), platform.request("GTY121")],
+            ip_params=platform.ip_presets['ibert']
         )
 
 # Build
