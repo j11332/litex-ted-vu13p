@@ -22,11 +22,12 @@ from litex.soc.cores.bitbang import I2CMaster
 from litex.soc.cores.gpio import GPIOOut, GPIOIn
 from cores.i2c_multiport import I2CMasterMP
 
-
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
 # from cores.i2c import I2C
 from cores.ibert.ibert import IBERT
+
+from localbuilder import LocalBuilder
 
 # CRG
 class _CRG(Module):
@@ -54,85 +55,11 @@ class _CRG(Module):
 
         self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
-class MyBuilder(Builder):
-    def __init__(self, soc,
-        # Directories.
-        output_dir       = None,
-        gateware_dir     = None,
-        software_dir     = None,
-        include_dir      = None,
-        generated_dir    = None,
-
-        # Compile Options.
-        compile_software = True,
-        compile_gateware = True,
-
-        # Exports.
-        csr_json         = None,
-        csr_csv          = None,
-        csr_svd          = None,
-        memory_x         = None,
-
-        # BIOS Options.
-        bios_options     = [],
-
-        # Documentation.
-        generate_doc     = False):
-
-        self.soc = soc
-
-        # Directories.
-        self.output_dir    = os.path.abspath(output_dir    or os.path.join("build", soc.platform.name))
-        self.gateware_dir  = os.path.abspath(gateware_dir  or os.path.join(self.output_dir,   "gateware"))
-        self.software_dir  = os.path.abspath(software_dir  or os.path.join(self.output_dir,   "software"))
-        self.include_dir   = os.path.abspath(include_dir   or os.path.join(self.software_dir, "include"))
-        self.generated_dir = os.path.abspath(generated_dir or os.path.join(self.include_dir,  "generated"))
-
-        # Compile Options.
-        self.compile_software = compile_software
-        self.compile_gateware = compile_gateware
-
-        # Exports.
-        self.csr_csv  = csr_csv
-        self.csr_json = csr_json
-        self.csr_svd  = csr_svd
-        self.memory_x = memory_x
-
-        # BIOS Options.
-        self.bios_options = bios_options
-
-        # Documentation
-        self.generate_doc = generate_doc
-
-        # List software packages.
-        self.software_packages = []
-        self.software_libraries = []
-
-        for name in soc_software_packages:
-            if name == "bios":
-                src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
-                self.add_software_package(name, src_dir = src_dir)
-            else:
-                self.add_software_package(name)
-            if name == "libbase":
-                name += "-nofloat"
-            self.add_software_library(name)
-
-    def add_software_package(self, name, src_dir=None):
-        if name == "bios":
-            src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bios")
-
-        if src_dir is None:
-            src_dir = os.path.join(soc_directory, "software", name)
-        
-        self.software_packages.append((name, src_dir))
-
-
 # BaseSoC
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
         platform = ted_tfoil.Platform()
-
+        soc_directory
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
             ident          = "LiteX SoC on tfoil",
@@ -223,7 +150,7 @@ def main():
         sys_clk_freq = int(float(args.sys_clk_freq)),
         **soc_core_argdict(args)
     )
-    builder = MyBuilder(soc, **builder_argdict(args))
+    builder = LocalBuilder(soc, **builder_argdict(args))
     builder.build(run=args.build)
 
     if args.load:
