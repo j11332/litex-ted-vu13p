@@ -25,10 +25,8 @@ from cores.i2c_multiport import I2CMasterMP
 
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
-# from cores.i2c import I2C
 from localbuilder import LocalBuilder
 
-# CRG
 class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
         self.rst = Signal()
@@ -54,22 +52,17 @@ class _CRG(Module):
 
         self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
-# BaseSoC
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
         platform = ted_tfoil.Platform()
 
-        # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
             ident          = "LiteX SoC on tfoil",
             ident_version  = True,
             **kwargs)
 
-        # CRG
         self.submodules.crg = _CRG(platform, sys_clk_freq)
 
-        # DDR4 SDRAM
-        print(kwargs)
         if not disable_sdram:
             if not self.integrated_main_ram_size:
                 self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
@@ -83,7 +76,6 @@ class BaseSoC(SoCCore):
                     l2_cache_size = kwargs.get("l2_size", 8192)
                 )
 
-        # Leds
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
@@ -123,7 +115,6 @@ class BaseSoC(SoCCore):
         self.submodules.sb_si5341_o = GPIOOut(pads = sb_si5341_o_pads)
         self.submodules.sb_si5341_i = GPIOIn(pads = sb_si5341_i_pads)
 
-# Build
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on tfoil")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
