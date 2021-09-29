@@ -5,26 +5,55 @@
 # Copyright (c) 2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
+import json
 from litex.build.generic_platform import Pins, Subsignal, IOStandard, Misc
 from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
 
 # IOs ----------------------------------------------------------------------------------------------
 
 _io = [
+    ("qsfp", 0,
+        Subsignal("rxn", Pins("n3 m1 l3 k1")),
+        Subsignal("rxp", Pins("n4 m2 l4 k2")),
+        Subsignal("txn", Pins("n8 m6 l8 k6")),
+        Subsignal("txp", Pins("n9 m7 l9 k7")),
+    ),
+    ("qsfp", 1,
+        Subsignal("rxn", Pins("U3 T1 R3 P1")),
+        Subsignal("rxp", Pins("U4 T2 R4 P2")),
+        Subsignal("txn", Pins("U8 T6 R8 P6")),
+        Subsignal("txp", Pins("U9 T7 R9 P7")),
+    ),
+    ("qsfp0_refclk156m",
+        Subsignal("n", Pins("m10")),
+        Subsignal("p", Pins("m11"))
+    ),
+    ("qsfp0_refclk161m",
+        Subsignal("n", Pins("k10")),
+        Subsignal("p", Pins("k11")),
+    ),
+    ("qsfp1_refclk156m",
+        Subsignal("n", Pins("T10")),
+        Subsignal("p", Pins("T11"))
+    ),
+    ("qsfp1_refclk161m",
+        Subsignal("n", Pins("P10")),
+        Subsignal("p", Pins("P11")),
+    ),
     # Clk / Rst
-    ("clk300", 0,
+    ("sys_clk", 0,
         Subsignal("n", Pins("AY38"), IOStandard("DIFF_SSTL12")),
         Subsignal("p", Pins("AY37"), IOStandard("DIFF_SSTL12")),
     ),
-    ("clk300", 1,
+    ("sys_clk", 1,
         Subsignal("n", Pins("AW19"), IOStandard("DIFF_SSTL12")),
         Subsignal("p", Pins("AW20"), IOStandard("DIFF_SSTL12")),
     ),
-    ("clk300", 2,
+    ("sys_clk", 2,
         Subsignal("n", Pins("E32"), IOStandard("DIFF_SSTL12")),
         Subsignal("p", Pins("F32"), IOStandard("DIFF_SSTL12")),
     ),
-    ("clk300", 3,
+    ("sys_clk", 3,
         Subsignal("n", Pins("H16"), IOStandard("DIFF_SSTL12")),
         Subsignal("p", Pins("J16"), IOStandard("DIFF_SSTL12")),
     ),
@@ -259,46 +288,95 @@ _io = [
     ),
 ]
 
+# Connectors ---------------------------------------------------------------------------------------
+
 _connectors = []
 
+# Platform -----------------------------------------------------------------------------------------
+_gty4_params = {
+    "CONFIG.CHANNEL_ENABLE"          : "X0Y23 X0Y22 X0Y21 X0Y20",
+    "CONFIG.FREERUN_FREQUENCY"       : "100",
+    "CONFIG.LOCATE_RX_USER_CLOCKING" : "CORE",
+    "CONFIG.LOCATE_TX_USER_CLOCKING" : "CORE",
+    "CONFIG.PRESET"                  : "GTY-Aurora_64B66B",
+    "CONFIG.RX_CB_MAX_LEVEL"         : "2",
+    "CONFIG.RX_DATA_DECODING"        : "64B66B_ASYNC",
+    "CONFIG.RX_JTOL_FC"              : "10",
+    "CONFIG.RX_LINE_RATE"            : "25.78125",
+    "CONFIG.RX_MASTER_CHANNEL"       : "X0Y23",
+    "CONFIG.RX_OUTCLK_SOURCE"        : "RXPROGDIVCLK",
+    "CONFIG.RX_REFCLK_FREQUENCY"     : "161.1328125",
+    "CONFIG.RX_REFCLK_SOURCE"        : "",
+    "CONFIG.TXPROGDIV_FREQ_VAL"      : "390.625",
+    "CONFIG.TX_DATA_ENCODING"        : "64B66B_ASYNC",
+    "CONFIG.TX_LINE_RATE"            : "25.78125",
+    "CONFIG.TX_MASTER_CHANNEL"       : "X0Y23",
+    "CONFIG.TX_OUTCLK_SOURCE"        : "TXPROGDIVCLK",
+    "CONFIG.TX_REFCLK_FREQUENCY"     : "161.1328125",
+}
 class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
+    
+    def add_gty4_ip(self):
+        _name = "gty4"
+        self.toolchain.pre_synthesis_commands += [
+            "create_ip "
+            "-vlnv xilinx.com:ip:gtwizard_ultrascale:* "
+            f"-module_name {_name}"
+        ]
+        
+        ip_params_json = json.dumps(_gty4_params)
+        self.toolchain.pre_synthesis_commands += [
+            "set_property -quiet "
+            "-dict [bd::json2dict {{"
+            f"{{{ip_params_json}}}"
+            "}}] "
+            f"[get_ips {_name}]"
+        ]
+        
+        self.toolchain.pre_synthesis_commands += [
+            f"generate_target all [get_ips {_name}]",
+            "catch {{" f"config_ip_cache -export [get_ips -all {_name}]" "}}",
+            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {_name}]]] -no_script -sync -force -quiet",
+            "launch_runs -jobs 10 ["
+                f"set {_name}_run [create_ip_run [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {_name}]]]]"
+            "]",
+            f"wait_on_run ${_name}_run"
+        ]
 
     def __init__(self):
-        XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-3-e", _io, _connectors, toolchain="vivado")
+        XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-2l-e", _io, _connectors, toolchain="vivado")
 
     def create_programmer(self):
         return VivadoProgrammer()
 
     def do_finalize(self, fragment):
+        self.add_gty4_ip()
         XilinxPlatform.do_finalize(self, fragment)
         # For passively cooled boards, overheating is a significant risk if airflow isn't sufficient
         self.add_platform_command("set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]")
- 
         # Reduce programming time
         self.add_platform_command("set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]")
- 
+        
         # DDR4 memory channel C0 Clock constraint / Internal Vref
-        self.add_period_constraint(self.lookup_request("clk300", 0, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 40]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 41]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 42]")
+        self.add_period_constraint(self.lookup_request("sys_clk", 0, loose=True), 1e9/300e6)
+        for bank in [40, 41, 42]:
+            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
 
         # DDR4 memory channel C1 Clock constraint / Internal Vref
-        self.add_period_constraint(self.lookup_request("clk300", 1, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 65]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 66]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 67]")
-
+        self.add_period_constraint(self.lookup_request("sys_clk", 1, loose=True), 1e9/300e6)
+        for bank in [65, 66, 67]:
+            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
+        
         # DDR4 memory channel C2 Clock constraint / Internal Vref
-        self.add_period_constraint(self.lookup_request("clk300", 2, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 46]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 47]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 48]")
-
+        self.add_period_constraint(self.lookup_request("sys_clk", 2, loose=True), 1e9/300e6)
+        for bank in [46, 47, 48]:
+            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
+        # self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 46 47 48]")
+        
         # DDR4 memory channel C3 Clock constraint / Internal Vref
-        self.add_period_constraint(self.lookup_request("clk300", 3, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 70]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 71]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 72]")
+        self.add_period_constraint(self.lookup_request("sys_clk", 3, loose=True), 1e9/300e6)
+        for bank in [70, 71, 72]:
+            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
+        # self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 70 71 72]")
