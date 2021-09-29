@@ -259,14 +259,18 @@ _io = [
     ),
 ]
 
+# Connectors ---------------------------------------------------------------------------------------
+
 _connectors = []
+
+# Platform -----------------------------------------------------------------------------------------
 
 class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
 
     def __init__(self):
-        XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-3-e", _io, _connectors, toolchain="vivado")
+        XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-2l-e", _io, _connectors, toolchain="vivado")
 
     def create_programmer(self):
         return VivadoProgrammer()
@@ -275,30 +279,17 @@ class Platform(XilinxPlatform):
         XilinxPlatform.do_finalize(self, fragment)
         # For passively cooled boards, overheating is a significant risk if airflow isn't sufficient
         self.add_platform_command("set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]")
- 
         # Reduce programming time
         self.add_platform_command("set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]")
- 
         # DDR4 memory channel C0 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("clk300", 0, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 40]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 41]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 42]")
-
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 40 41 42]")
         # DDR4 memory channel C1 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("clk300", 1, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 65]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 66]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 67]")
-
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 65 66 67]")
         # DDR4 memory channel C2 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("clk300", 2, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 46]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 47]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 48]")
-
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 46 47 48]")
         # DDR4 memory channel C3 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("clk300", 3, loose=True), 1e9/300e6)
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 70]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 71]")
-        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 72]")
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 70 71 72]")

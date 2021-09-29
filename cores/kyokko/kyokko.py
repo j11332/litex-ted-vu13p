@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from migen import *
 from litex.soc.interconnect import stream
-from cores.kyokko.phy.phy_usp_gty import USPGTY
+from cores.kyokko.phy.phy_usp_gty import USPGTY4
 import os.path
 
 def _ky_phy_layout(bond_ch):
@@ -20,79 +20,52 @@ def _ky_phy_layout(bond_ch):
     ]
 
 class Kyokko(Module):
-    def __init__(self, platform, pads, bond_ch = 4):
+    def __init__(self, platform, phy, bond_ch = 4):
         self.user_tx_sink = stream.Endpoint([("data", 64 * bond_ch)])
         self.user_rx_source = stream.Endpoint([("data", 64 * bond_ch)])
-        self.ufc_msg = stream.Endpoint([("msg", 8)])
-        self.ufc_tx_sink = stream.Endpoint([("data", 64 * bond_ch)])
-        self.ufc_rx_source = stream.Endpoint([("data", 64 * bond_ch)])
-        self.nfc_tx_sink = stream.Endpoint([("data", 16)])
+        self.init_clk_locked = Signal()
         
         # # #
-        phy_if = Record(_ky_phy_layout(bond_ch))
-        self.kyokko_params = dict(
-            p_BondingCh  = bond_ch,
-            i_CLK        = ClockSignal("clk100"),
-            i_CLK100     = ClockSignal("clk100"),
-            i_RXCLK      = phy_if.RXCLK,
-            i_TXCLK      = phy_if.TXCLK,
-            i_RXRST      = phy_if.RXRST,
-            i_TXRST      = phy_if.TXRST,
-            o_CH_UP      = phy_if.CH_UP,
-            i_RXHDR      = phy_if.RXHDR,
-            i_RXS        = phy_if.RXS,
-            o_RXSLIP     = phy_if.RXSLIP,
-            o_RXPATH_RST = phy_if.RXPATH_RST,
-            o_TXHDR      = phy_if.TXHDR,
-            o_TXS        = phy_if.TXS
-        )
-
+        
         # TX User I/F
-        self.kyokko_params.update(
-            i_S_AXIS_TVALID = self.user_tx_sink.valid,
-            i_S_AXIS_TLAST = self.user_tx_sink.last,
-            i_S_AXIS_TDATA = self.user_tx_sink.data,
-            o_S_AXIS_TREADY = self.user_tx_sink.ready
+        self.kyokko_params = dict(
+            i_s_axis_tx_tvalid = self.user_tx_sink.valid,
+            i_s_axis_tx_tlast = self.user_tx_sink.last,
+            i_s_axis_tx_tdata = self.user_tx_sink.data,
+            o_s_axis_tx_tready = self.user_tx_sink.ready
         )
 
         # RX User I/F
         self.kyokko_params.update(
-            o_M_AXIS_TVALID = self.user_rx_source.valid,
-            o_M_AXIS_TLAST = self.user_rx_source.last,
-            o_M_AXIS_TDATA = self.user_rx_source.data
+            o_m_axis_rx_tvalid = self.user_rx_source.valid,
+            o_m_axis_rx_tlast = self.user_rx_source.last,
+            o_m_axis_rx_tdata = self.user_rx_source.data
         )
         self.comb += self.user_rx_source.ready.eq(1)
-
-
-        # TX UFC I/F
+        self.submodules.phy = phy
+        ky_reset = Signal()
+        self.comb += ky_reset.eq((~self.init_clk_locked))
         self.kyokko_params.update(
-            i_S_AXIS_UFC_TVALID = self.ufc_tx_sink.valid,
-            i_S_AXIS_UFC_TDATA = self.ufc_tx_sink.data,
-            o_S_AXIS_UFC_TREADY = self.ufc_tx_sink.ready
+            i_clk = phy.reset_clk_freerun,
+            i_reset = ky_reset,
+            o_gtwiz_userclk_tx_reset_out = phy.userclk_tx_reset,
+            i_gtwiz_userclk_tx_usrclk2_in = phy.userclk_tx_usrclk2,
+            o_gtwiz_userclk_rx_reset_out = phy.userclk_rx_reset,
+            i_gtwiz_userclk_rx_usrclk2_in = phy.userclk_rx_usrclk2,
+            o_gtwiz_reset_all_out = phy.reset_all,
+            o_gtwiz_reset_tx_pll_and_datapath_out = phy.reset_tx_pll_and_datapath,
+            o_gtwiz_reset_tx_datapath_out = phy.reset_tx_datapath,
+            o_gtwiz_reset_rx_pll_and_datapath_out = phy.reset_rx_pll_and_datapath,
+            o_gtwiz_reset_rx_datapath_out = phy.reset_rx_datapath,
+            i_gtwiz_reset_tx_done_in = phy.reset_tx_done,
+            i_gtwiz_reset_rx_done_in = phy.reset_rx_done,
+            o_gtwiz_userdata_tx_out = phy.userdata_tx,
+            i_gtwiz_userdata_rx_in = phy.userdata_rx,
+            o_rxgearboxslip_out = phy.rxgearboxslip,
+            o_txheader_out = phy.txheader,
+            i_rxheader_in = phy.rxheader,
+            o_txsequence_out = phy.txsequence,
         )
-
-        # RX UFC I/F
-        self.kyokko_params.update(
-            o_M_AXIS_UFC_TVALID = self.ufc_rx_source.valid,
-            o_M_AXIS_UFC_TLAST = self.ufc_rx_source.last,
-            o_M_AXIS_UFC_TDATA = self.ufc_rx_source.data
-        )
-        self.comb += self.ufc_rx_source.ready.eq(1)
-
-        self.kyokko_params.update(
-            i_UFC_REQ = self.ufc_msg.valid,
-            i_UFC_MS = self.ufc_msg.msg
-        )
-
-        # NFC
-        self.kyokko_params.update(
-            i_S_AXIS_NFC_TVALID = self.nfc_tx_sink.valid,
-            i_S_AXIS_NFC_TDATA = self.nfc_tx_sink.data,
-            o_S_AXIS_NFC_TREADY = self.nfc_tx_sink.ready
-        )
-        print(pads)
-        self.submodules.phy = USPGTY(platform, "phy", pads, phy_if)
-    
     @staticmethod
     def add_sources(platform):
         srcdir = os.path.join(os.path.dirname(__file__), "verilog")
@@ -114,12 +87,24 @@ class Kyokko(Module):
             "teng-sc.v")
         
     def do_finalize(self):
-        self.specials += [
-            Instance("kyokko-cb", **self.kyokko_params),
-            Instance("gt_rst", 
-                i_CLK    = ClockSignal("clk100"),
-                i_RST    = ResetSignal("sys"),
-                o_GT_RST = ResetSignal("clk100")
-            )
-        ]
+        self.specials += Instance("kyokko_cb_wrapper", **self.kyokko_params)
 
+"""
+  o_gtwiz_userclk_tx_reset_out,
+  i_gtwiz_userclk_tx_usrclk2_in,
+  o_gtwiz_userclk_rx_reset_out,
+  i_gtwiz_userclk_rx_usrclk2_in,
+  o_gtwiz_reset_all_out,
+  o_gtwiz_reset_tx_pll_and_datapath_out,
+  o_gtwiz_reset_tx_datapath_out,
+  o_gtwiz_reset_rx_pll_and_datapath_out,
+  o_gtwiz_reset_rx_datapath_out,
+  i_gtwiz_reset_tx_done_in,
+  i_gtwiz_reset_rx_done_in,
+  o_gtwiz_userdata_tx_out, #  [255:0]
+  i_gtwiz_userdata_rx_in, # [255:0]
+  o_rxgearboxslip_out, #  [3:0]
+  o_txheader_out, #  [23:0]
+  i_rxheader_in, # [23:0]
+  o_txsequence_out #  [27:0]
+"""

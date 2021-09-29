@@ -94,5 +94,11 @@ ENV/
 
 # Vivado
 vivado_*.log
+vivado.log
 vivado_*.jou
+vivado.jou
+vivado_*.str
 .Xil
+.gen
+
+work/
