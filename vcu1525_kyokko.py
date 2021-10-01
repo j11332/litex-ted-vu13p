@@ -19,6 +19,9 @@ from litedram.modules import MTA18ASF2G72PZ
 from litedram.phy import usddrphy
 from localbuilder import LocalBuilder
 
+from cores.kyokko.phy.phy_usp_gty import USPGTY4
+from cores.kyokko.kyokko import Kyokko
+
 class _CRG(Module):
 
     def __init__(self, platform : Platform, sys_clk_freq):
@@ -77,6 +80,7 @@ class BaseSoC(SoCCore):
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
         
+        self.submodules += USPGTY4(platform, "kyokko_phy", platform.request("qsfp0_refclk161m"))
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
