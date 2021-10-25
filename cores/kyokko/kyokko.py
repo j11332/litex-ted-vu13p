@@ -3,15 +3,38 @@ from migen import *
 from litex.soc.interconnect import stream
 from cores.kyokko.phy.phy_usp_gty import USPGTY4
 import os.path
+from litex.build.xilinx import XilinxPlatform
+
+# create_ip -vlnv xilinx.com:ip:fifo_generator:* -module_name 
+_xilinx_fifo_66x512_async_ip = {
+    "CONFIG.Data_Count_Width"           : "9",
+    "CONFIG.Enable_Safety_Circuit"      : "true",
+    "CONFIG.Fifo_Implementation"        : "Independent_Clocks_Block_RAM",
+    "CONFIG.Full_Flags_Reset_Value"     : "1",
+    "CONFIG.Full_Threshold_Assert_Value": "509",
+    "CONFIG.Full_Threshold_Negate_Value": "508",
+    "CONFIG.Input_Data_Width"           : "66",
+    "CONFIG.Input_Depth"                : "512",
+    "CONFIG.Output_Data_Width"          : "66",
+    "CONFIG.Output_Depth"               : "512",
+    "CONFIG.Read_Data_Count_Width"      : "9",
+    "CONFIG.Reset_Type"                 : "Asynchronous_Reset",
+    "CONFIG.Valid_Flag"                 : "true",
+    "CONFIG.Write_Data_Count_Width"     : "9",
+}
 
 class Kyokko(Module):
-    def __init__(self, platform, phy, bond_ch = 4):
+    def __init__(self, platform, phy, bond_ch = 4, cd_freerun="clk100"):
         self.user_tx_sink = stream.Endpoint([("data", 64 * bond_ch)])
         self.user_rx_source = stream.Endpoint([("data", 64 * bond_ch)])
         self.init_clk_locked = Signal()
         
         # # #
-        
+        if isinstance(platform, XilinxPlatform):
+            platform.add_tcl_ip("xilinx.com:ip:fifo_generator", "fifo_66x512_async", _xilinx_fifo_66x512_async_ip)
+        else: 
+            raise NotImplementedError()
+
         # TX User I/F
         self.kyokko_params = dict(
             i_s_axis_tx_tvalid = self.user_tx_sink.valid,
@@ -31,7 +54,7 @@ class Kyokko(Module):
         ky_reset = Signal()
         self.comb += ky_reset.eq((~self.init_clk_locked))
         self.kyokko_params.update(
-            i_clk = phy.reset_clk_freerun,
+            i_clk = ClockSignal(cd_freerun),
             i_reset = ky_reset,
             o_gtwiz_userclk_tx_reset_out = phy.userclk_tx_reset,
             i_gtwiz_userclk_tx_usrclk2_in = phy.userclk_tx_usrclk2,
@@ -53,7 +76,8 @@ class Kyokko(Module):
         )
     @staticmethod
     def add_sources(platform):
-        srcdir = os.path.join(os.path.dirname(__file__), "verilog")
+        srcdir = os.path.join(os.path.dirname(__file__), "rtl")
+        srcdir = os.path.join(srcdir, "verilog")
         platform.add_sources(srcdir,
             "byte-reverse8.v",
             "gt-rst.v",
@@ -69,7 +93,9 @@ class Kyokko(Module):
             "kyokko-tx-ufc.v",
             "kyokko.v",
             "rxpath-rst.v",
-            "teng-sc.v")
-        
+            "teng-sc.v",
+            "kyokko_cb_wrapper.v",
+            project=True)
+            
     def do_finalize(self):
         self.specials += Instance("kyokko_cb_wrapper", **self.kyokko_params)

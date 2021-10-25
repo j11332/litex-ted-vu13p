@@ -12,13 +12,11 @@ class Differential:
         self.n = Signal.like(self.p)
 
 class USPGTY4(Module):
-    def __init__(self, platform, name, refclk):
+    def __init__(self, platform, name, refclk, pads, cd="clk100"):
         
         # high speed serial tx/rx
-        LANES = 4
-        self.gtyrx = Differential(LANES)
-        self.gtytx = Differential(LANES)
-        
+        self.lanes = LANES = len(pads.tx_p)
+                              
         # tx/rx datapath
         self.userdata_tx = Signal(LANES * 64)
         self.userclk_tx_usrclk2 = Signal()
@@ -39,7 +37,6 @@ class USPGTY4(Module):
         self.rxgearboxslip = Signal(4)
                 
         # common
-        self.reset_clk_freerun = Signal()
         self.reset_all = Signal()
         
         # # #
@@ -63,10 +60,10 @@ class USPGTY4(Module):
 
         self.ip_ports = dict(
             i_gtrefclk00_in = gtrefclk,
-            o_gtytxn_out = self.gtytx.n,
-            o_gtytxp_out = self.gtytx.p,
-            i_gtyrxn_in  = self.gtyrx.n,
-            i_gtyrxp_in  = self.gtyrx.p,
+            o_gtytxn_out = pads.tx_n,
+            o_gtytxp_out = pads.tx_p,
+            i_gtyrxn_in  = pads.rx_n,
+            i_gtyrxp_in  = pads.rx_p,
         )
         
         port_tx_dp = dict(
@@ -94,7 +91,7 @@ class USPGTY4(Module):
   
         self.ip_ports.update(
             dict(
-                i_gtwiz_reset_clk_freerun_in = self.reset_clk_freerun,
+                i_gtwiz_reset_clk_freerun_in = ClockSignal(cd),
                 i_gtwiz_reset_all_in = self.reset_all,
             )
         )

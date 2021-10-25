@@ -102,3 +102,4 @@ vivado_*.str
 .gen
 
 work/
+*.vcd

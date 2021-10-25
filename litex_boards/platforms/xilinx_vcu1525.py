@@ -8,21 +8,21 @@
 import json
 from litex.build.generic_platform import Pins, Subsignal, IOStandard, Misc
 from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
-
+import os.path
 # IOs ----------------------------------------------------------------------------------------------
 
 _io = [
     ("qsfp", 0,
-        Subsignal("rxn", Pins("n3 m1 l3 k1")),
-        Subsignal("rxp", Pins("n4 m2 l4 k2")),
-        Subsignal("txn", Pins("n8 m6 l8 k6")),
-        Subsignal("txp", Pins("n9 m7 l9 k7")),
+        Subsignal("rx_n", Pins("n3 m1 l3 k1")),
+        Subsignal("rx_p", Pins("n4 m2 l4 k2")),
+        Subsignal("tx_n", Pins("n8 m6 l8 k6")),
+        Subsignal("tx_p", Pins("n9 m7 l9 k7")),
     ),
     ("qsfp", 1,
-        Subsignal("rxn", Pins("U3 T1 R3 P1")),
-        Subsignal("rxp", Pins("U4 T2 R4 P2")),
-        Subsignal("txn", Pins("U8 T6 R8 P6")),
-        Subsignal("txp", Pins("U9 T7 R9 P7")),
+        Subsignal("rx_n", Pins("U3 T1 R3 P1")),
+        Subsignal("rx_p", Pins("U4 T2 R4 P2")),
+        Subsignal("tx_n", Pins("U8 T6 R8 P6")),
+        Subsignal("tx_p", Pins("U9 T7 R9 P7")),
     ),
     ("qsfp0_refclk156m", 0,
         Subsignal("n", Pins("m10")),
@@ -318,41 +318,62 @@ class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
     
-    def add_gty4_ip(self):
-        _name = "gty4"
+    def add_tcl_ip(self, ipdef, name, config):
+        
         self.toolchain.pre_synthesis_commands += [
             "create_ip "
-            "-vlnv xilinx.com:ip:gtwizard_ultrascale:* "
-            f"-module_name {_name}"
+            f"-vlnv {ipdef}:* "
+            f"-module_name {name}"
         ]
         
-        ip_params_json = json.dumps(_gty4_params)
+        ip_params_json = json.dumps(config)
         self.toolchain.pre_synthesis_commands += [
             "set_property -quiet "
             "-dict [bd::json2dict {{"
             f"{{{ip_params_json}}}"
             "}}] "
-            f"[get_ips {_name}]"
+            f"[get_ips {name}]"
         ]
         
         self.toolchain.pre_synthesis_commands += [
-            f"generate_target all [get_ips {_name}]",
-            "catch {{" f"config_ip_cache -export [get_ips -all {_name}]" "}}",
-            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {_name}]]] -no_script -sync -force -quiet",
+            f"generate_target all [get_ips {name}]",
+            "catch {{" f"config_ip_cache -export [get_ips -all {name}]" "}}",
+            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {name}]]] -no_script -sync -force -quiet",
             "launch_runs -jobs 10 ["
-                f"set {_name}_run [create_ip_run [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {_name}]]]]"
+                f"set {name}_run [create_ip_run -force [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {name}]]]]"
             "]",
-            f"wait_on_run ${_name}_run"
+            f"wait_on_run ${name}_run"
         ]
+        
+    def add_ip_gty4(self):
+        self.add_tcl_ip("xilinx.com:ip:gtwizard_ultrascale", "gty4", _gty4_params)
 
     def __init__(self):
         XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-2l-e", _io, _connectors, toolchain="vivado")
-
+        self.set_ip_cache_dir("/home/e2/tmp/ip_cache")
+        
     def create_programmer(self):
         return VivadoProgrammer()
 
+    def set_ip_cache_dir(self, cache_dir):
+        self.toolchain.pre_synthesis_commands += [f"config_ip_cache -import_from_project -use_cache_location {cache_dir}"]
+    
+    def add_source(self, filename, language=None, library=None, project=False):
+        if not project:
+            super().add_source(filename, language, library)
+        else:
+            fullpath = os.path.abspath(filename)
+            self.toolchain.pre_synthesis_commands += [
+                f"add_files {fullpath}"
+            ]
+    
+    def add_sources(self, path, *filenames, language=None, library=None, project=False):
+        for f in filenames:
+            self.add_source(os.path.join(path, f), language, library, project)
+    
     def do_finalize(self, fragment):
-        self.add_gty4_ip()
+        
+        self.add_ip_gty4()
         XilinxPlatform.do_finalize(self, fragment)
         # For passively cooled boards, overheating is a significant risk if airflow isn't sufficient
         self.add_platform_command("set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]")
