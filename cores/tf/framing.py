@@ -15,8 +15,8 @@ def _remove_from_layout(layout, *args):
             r.append(f)
     return r
 
-class _Packet:
-    magic                = 0x4e6f
+class K2MMPacket:
+    magic                = 0x4f6f
     version              = 1
     header_length = 8
     header_fields = {
@@ -25,14 +25,21 @@ class _Packet:
         "nr":        HeaderField(2, 2,  1),
         "pr":        HeaderField(2, 1,  1),
         "pf":        HeaderField(2, 0,  1),
-        "addr_size": HeaderField(3, 4,  4),
-        "port_size": HeaderField(3, 0,  4)
+        "addr_size": HeaderField(3, 0,  8),
+        "port_size": HeaderField(4, 0,  8)
     }
     header = Header(header_fields, header_length, swap_field_bytes=True)
 
     @staticmethod
+    def get_header(dw, aligned=True):
+        return Header(
+            __class__.header_fields,
+            length = dw // 8 if aligned else __class__.header_length,
+            swap_field_bytes = True)
+    
+    @staticmethod
     def packet_description(dw):
-        param_layout = __class__.header.get_layout()
+        param_layout = __class__.get_header(dw).get_layout()
         payload_layout = [
             ("data",       dw),
             ("last_be", dw//8),
@@ -42,7 +49,7 @@ class _Packet:
     
     @staticmethod
     def packet_user_description(dw):
-        param_layout = __class__.header.get_layout()
+        param_layout = __class__.get_header(dw).get_layout()
         param_layout = _remove_from_layout(param_layout, "magic", "portsize", "addrsize", "version")
         param_layout += eth_udp_user_description(dw).param_layout
         payload_layout = [
@@ -59,18 +66,18 @@ class K2MMPacketTX(Module):
         class K2MMPacketizer(Packetizer):
             def __init__(self, dw=32):
                 super().__init__(
-                    _Packet.packet_description(dw),
+                    K2MMPacket.packet_description(dw),
                     eth_udp_user_description(dw), 
-                    _Packet.header)
+                    K2MMPacket.get_header(dw))
 
-        self.sink = sink = Endpoint(_Packet.packet_user_description(dw))
+        self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(eth_udp_user_description(dw))
         
         self.submodules.packetizer = packetizer = K2MMPacketizer(dw)
         self.comb += [
             sink.connect(packetizer.sink, omit={"src_port", "dst_port", "ip_address", "length"}),
-            packetizer.sink.version.eq(_Packet.version),
-            packetizer.sink.magic.eq(_Packet.magic),
+            packetizer.sink.version.eq(K2MMPacket.version),
+            packetizer.sink.magic.eq(K2MMPacket.magic),
             packetizer.sink.addr_size.eq(32 // 8),
             packetizer.sink.port_size.eq(32 // 8)
         ]
@@ -86,7 +93,7 @@ class K2MMPacketTX(Module):
             source.src_port.eq(udp_port),
             source.dst_port.eq(udp_port),
             source.ip_address.eq(sink.ip_address),
-            source.length.eq(sink.length + _Packet.header.length),
+            source.length.eq(sink.length + K2MMPacket.get_header(dw).length),
             If(source.valid & source.last & source.ready,
                 NextState("IDLE")
             )

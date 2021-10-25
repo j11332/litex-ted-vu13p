@@ -25,7 +25,7 @@ class DUT(Module):
         
         # # #
         
-        self.submodules.tfg = tfg = ClockDomainsRenamer(cd_phy_name)(TestFrameGenerator(data_width=32))
+        self.submodules.tfg = tfg = ClockDomainsRenamer(cd_phy_name)(TestFrameGenerator(data_width=256))
         self.submodules.cdc_s2p = cdc_s2p = stream.ClockDomainCrossing(
             tfg.sink_ctrl.description,
             cd_from=cd_sys_name,
@@ -74,7 +74,7 @@ class DUT(Module):
     def stream_handler(ep):
         while True:
             if (yield ep.valid) and (yield ep.ready):
-                print('0x{:08x} first={}, last={}, len={}'.format((yield ep.data), (yield ep.first), (yield ep.last), (yield ep.length)))
+                print('0x{:x} first={}, last={}, len={}'.format((yield ep.data), (yield ep.first), (yield ep.last), (yield ep.length)))
             yield
 
     def run_sim(self, **args):

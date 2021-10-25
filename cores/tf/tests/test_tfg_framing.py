@@ -56,9 +56,9 @@ class _DUT(Module):
     def stream_handler(ep):
         while True:
             if (yield ep.valid) and (yield ep.ready):
-                print('0x{:08x} first={}, last={}, len={}'.format((yield ep.data), (yield ep.first), (yield ep.last), (yield ep.length)))
-                for key, _, __ in ep.param.layout:
-                    print("{}={:x}".format(key, (yield getattr(ep, key))))
+                print('0x{:x} first={}, last={}, len={}'.format((yield ep.data), (yield ep.first), (yield ep.last), (yield ep.length)))
+                # for key, _, __ in ep.param.layout:
+                #     print("{}={:x}".format(key, (yield getattr(ep, key))))
             yield
 
     def run_sim(self, **args):
@@ -78,6 +78,6 @@ class _DUT(Module):
                 
 if __name__ == "__main__":
     
-    dut = _DUT()
+    dut = _DUT(dw=256)
     dut.run_sim(vcd_name="tfg_oo.vcd")
     

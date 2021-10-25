@@ -7,6 +7,7 @@ from migen.genlib.fsm import FSM, NextState, NextValue
 from litex.soc.interconnect import stream
 
 from cores.tf.testframe import testFrameDescriptor
+from cores.tf.framing import K2MMPacket
 from litex.soc.interconnect.csr import *
 
 class TFGController(Module, AutoCSR):
@@ -47,7 +48,7 @@ class TestFrameGenerator(Module):
             self.getControlInterfaceDescriptor(maxlen=maxlen)
         )
         self.source = source = stream.Endpoint(
-            testFrameDescriptor(data_width))
+            K2MMPacket.packet_user_description(dw=data_width))
 
         # # #
 
@@ -72,7 +73,6 @@ class TestFrameGenerator(Module):
             source.data.eq(Replicate(beats, data_width//len(beats))),
             source.length.eq((length + 1) * (data_width//8)),
             source.valid.eq(1),
-            source.last.eq(beats == length),
             source.first.eq(beats == 0),
             If(source.ready == 1,
                 If(beats == length,
@@ -80,7 +80,14 @@ class TestFrameGenerator(Module):
                 ).Else(
                     NextValue(beats, beats + 1)
                 )
-            )
+            ),
+            If(beats == length,
+                source.last.eq(1),
+                source.last_be.eq(Replicate(C(1), data_width//8)),
+            ).Else(
+                source.last.eq(0),
+                source.last_be.eq(0),
+            ),
         )
         # fsm.act("DONE",
         #     sink_ctrl.ready.eq(0),
