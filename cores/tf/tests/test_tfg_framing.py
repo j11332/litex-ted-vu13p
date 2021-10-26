@@ -8,7 +8,7 @@ from litex.soc.interconnect import stream
 
 from cores.tf.testframe import testFrameDescriptor
 from cores.tf.tfg import TestFrameGenerator
-from cores.tf.framing import K2MMPacketTX
+from cores.tf.framing import *
 
 from litex.soc.interconnect.csr import *
 
@@ -20,17 +20,18 @@ class _DUT(Module):
         # # #
         
         self.submodules.tfg = tfg = TestFrameGenerator(data_width=dw)
-        self.submodules.tx_framing = tx_framing = K2MMPacketTX(dw=dw)
-        
-        self.comb += tfg.source.connect(tx_framing.sink)
-        
-        self.sink_ctrl = tfg.sink_ctrl
-        self.source = tx_framing.source
+        self.submodules.txf0 = tx_framing = K2MMPacketTX(dw=dw)
+        self.submodules.rxf0 = rx_framing = K2MMPacketRX(dw=dw)
+
+        self.comb += [
+            tfg.source.connect(tx_framing.sink),
+            tx_framing.source.connect(rx_framing.sink),
+        ]
     
     def tfg_test(self):
         
         def _tfg_driver(dut):
-            ep = dut.sink_ctrl
+            ep = dut.tfg.sink_ctrl
             def put_request(len):
                 yield ep.length.eq(len)
                 yield ep.valid.eq(1)
@@ -39,16 +40,15 @@ class _DUT(Module):
                     yield
                 yield ep.valid.eq(0)
                 
-                while ((yield dut.source.last) == 0):
+                while ((yield dut.rxf0.source.last) == 0):
                     yield
                 yield
-            
+            yield self.rxf0.source.ready.eq(1)
             yield from put_request(0)    
             yield from put_request(1)
             yield from put_request(2)
             yield from put_request(10)
-
-        yield self.source.ready.eq(1)
+        
         yield from _tfg_driver(self)
 
     @staticmethod
@@ -66,7 +66,7 @@ class _DUT(Module):
         _generators = {
             "sys" : [
                 self.tfg_test(),
-                self.stream_handler(dut.source)
+                self.stream_handler(dut.rxf0.source)
             ],
         }
         
@@ -78,6 +78,5 @@ class _DUT(Module):
                 
 if __name__ == "__main__":
     
-    dut = _DUT(dw=256)
+    dut = _DUT(dw=32)
     dut.run_sim(vcd_name="tfg_oo.vcd")
-    

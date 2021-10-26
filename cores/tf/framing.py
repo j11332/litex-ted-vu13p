@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 from migen import *
 from litex.soc.interconnect.stream import EndpointDescription, Endpoint
-from litex.soc.interconnect.packet import Packetizer, Header, HeaderField
+from litex.soc.interconnect.packet import Packetizer, Depacketizer, Header, HeaderField
 from liteeth.common import eth_udp_user_description
 
 def _remove_from_layout(layout, *args):
@@ -73,13 +73,17 @@ class K2MMPacketTX(Module):
         self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(eth_udp_user_description(dw))
         
-        self.submodules.packetizer = packetizer = K2MMPacketizer(dw)
+        self.submodules.packetizer = packetizer = Packetizer(
+            K2MMPacket.packet_description(dw),
+            source.description,
+            K2MMPacket.get_header(dw)
+        )
         self.comb += [
             sink.connect(packetizer.sink, omit={"src_port", "dst_port", "ip_address", "length"}),
             packetizer.sink.version.eq(K2MMPacket.version),
             packetizer.sink.magic.eq(K2MMPacket.magic),
-            packetizer.sink.addr_size.eq(32 // 8),
-            packetizer.sink.port_size.eq(32 // 8)
+            packetizer.sink.addr_size.eq(dw // 8),
+            packetizer.sink.port_size.eq(dw // 8)
         ]
         
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
@@ -98,5 +102,51 @@ class K2MMPacketTX(Module):
                 NextState("IDLE")
             )
         )
+
+class K2MMPacketRX(Module):
+    def __init__(self, dw=32):
+        self.sink = sink = Endpoint(eth_udp_user_description(dw))
+        self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
+
+        # # #
         
-        
+        self.submodules.dpkt0 = depacketizer = Depacketizer(
+            sink.description,
+            K2MMPacket.packet_description(dw),
+            K2MMPacket.get_header(dw)
+        )
+        self.comb += self.sink.connect(depacketizer.sink)
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            If(depacketizer.source.valid,
+                NextState("DROP"),
+                If(depacketizer.source.magic == K2MMPacket.magic,
+                    NextState("RECEIVE")
+                )
+            )
+        )
+        self.comb += [
+            # FIXME: flag for "user" header fields
+            depacketizer.source.connect(source, keep={"last", "pf", "pr", "nr", "data"}),
+            source.src_port.eq(sink.src_port),
+            source.dst_port.eq(sink.dst_port),
+            source.ip_address.eq(sink.ip_address),
+            source.length.eq(sink.length - K2MMPacket.get_header(dw).length)
+        ]
+        fsm.act("RECEIVE",
+            depacketizer.source.connect(source, keep={"valid", "ready"}),
+            If(source.valid & source.ready,
+                If(source.last,
+                    NextState("IDLE")
+                )
+            )
+        )
+        fsm.act("DROP",
+            depacketizer.source.ready.eq(1),
+            If(depacketizer.source.valid &
+                depacketizer.source.last &
+                depacketizer.source.ready,
+                NextState("IDLE")
+            )
+        )

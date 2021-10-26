@@ -25,7 +25,7 @@ class DUT(Module):
         
         # # #
         
-        self.submodules.tfg = tfg = ClockDomainsRenamer(cd_phy_name)(TestFrameGenerator(data_width=256))
+        self.submodules.tfg = tfg = ClockDomainsRenamer(cd_phy_name)(TestFrameGenerator(data_width=32))
         self.submodules.cdc_s2p = cdc_s2p = stream.ClockDomainCrossing(
             tfg.sink_ctrl.description,
             cd_from=cd_sys_name,
@@ -56,6 +56,7 @@ class DUT(Module):
                 while (yield ep.ready) == 0:
                     yield
                 yield ep.valid.eq(0)
+                yield
                 
                 while ((yield dut.source.last) == 0):
                     yield
