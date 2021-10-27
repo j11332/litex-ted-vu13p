@@ -1,63 +1,12 @@
 #!/usr/bin/python3
-from migen import *
-from litex.soc.interconnect.stream import EndpointDescription, Endpoint
-from litex.soc.interconnect.packet import Packetizer, Depacketizer, Header, HeaderField
+from cores.tf.packet import K2MMPacket
+from cores.tf.tfg import TestFrameGenerator
+from cores.tf.tfc import TestFrameChecker
 from liteeth.common import eth_udp_user_description
-
-def _remove_from_layout(layout, *args):
-    r = []
-    for f in layout:
-        remove = False
-        for arg in args:
-            if f[0] == arg:
-                remove = True
-        if not remove:
-            r.append(f)
-    return r
-
-class K2MMPacket:
-    magic                = 0x4f6f
-    version              = 1
-    header_length = 8
-    header_fields = {
-        "magic":     HeaderField(0, 0, 16),
-        "version":   HeaderField(2, 4,  4),
-        "nr":        HeaderField(2, 2,  1),
-        "pr":        HeaderField(2, 1,  1),
-        "pf":        HeaderField(2, 0,  1),
-        "addr_size": HeaderField(3, 0,  8),
-        "port_size": HeaderField(4, 0,  8)
-    }
-    header = Header(header_fields, header_length, swap_field_bytes=True)
-
-    @staticmethod
-    def get_header(dw, aligned=True):
-        return Header(
-            __class__.header_fields,
-            length = dw // 8 if aligned else __class__.header_length,
-            swap_field_bytes = True)
-    
-    @staticmethod
-    def packet_description(dw):
-        param_layout = __class__.get_header(dw).get_layout()
-        payload_layout = [
-            ("data",       dw),
-            ("last_be", dw//8),
-            ("error",   dw//8)
-        ]
-        return EndpointDescription(payload_layout, param_layout)
-    
-    @staticmethod
-    def packet_user_description(dw):
-        param_layout = __class__.get_header(dw).get_layout()
-        param_layout = _remove_from_layout(param_layout, "magic", "portsize", "addrsize", "version")
-        param_layout += eth_udp_user_description(dw).param_layout
-        payload_layout = [
-            ("data",       dw),
-            ("last_be", dw//8),
-            ("error",   dw//8)
-        ]
-        return EndpointDescription(payload_layout, param_layout)
+from litex.soc.interconnect.packet import (Arbiter, Depacketizer, Dispatcher,
+                                           Header, HeaderField, Packetizer)
+from litex.soc.interconnect.stream import Endpoint, EndpointDescription
+from migen import *
 
 class K2MMPacketTX(Module):
             
@@ -150,3 +99,79 @@ class K2MMPacketRX(Module):
                 NextState("IDLE")
             )
         )
+
+class K2MMProbe(Module):
+    def __init__(self, dw=32):
+        self.sink   = sink   = Endpoint(K2MMPacket.packet_user_description(dw))
+        self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
+
+        # # #
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            If(sink.valid,
+                NextState("PROBE_RESPONSE")
+            )
+        )
+        fsm.act("PROBE_RESPONSE",
+            sink.connect(source),
+            source.pf.eq(0),
+            source.pr.eq(1),
+            If(source.valid & source.ready,
+                If(source.last,
+                    NextState("IDLE")
+                )
+            )
+        )
+       
+class _K2MMPacketParser(Module):
+    def __init__(self, dw=32):
+        
+        # TX/RX packet
+        self.submodules.ptx = ptx = K2MMPacketTX(dw=dw)
+        self.submodules.prx = prx = K2MMPacketRX(dw=dw)
+        
+        self.sink, self.source = self.ptx.sink, self.prx.source
+
+class _K2MMTester(Module):
+    def __init__(self, dw=32):
+        self.sink   = sink   = Endpoint(K2MMPacket.packet_user_description(dw))
+        self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
+        
+        # # #
+
+        self.submodules.tfg = tfg = TestFrameGenerator(data_width=dw)
+        self.submodules.tfc = tfc = TestFrameChecker(dw=dw)
+        self.comb += [
+            sink.connect(tfc.sink),
+            tfg.source.connect(source)
+        ]
+
+class K2MM(Module):
+    def __init__(self, dw=32):
+        # Packet parser
+        self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
+
+        # function modules
+        self.submodules.probe = probe = K2MMProbe(dw=dw)
+        self.submodules.tester = tester = _K2MMTester(dw=dw)
+        
+        # Arbitrate source endpoints
+        self.submodules.arbiter = arbiter = Arbiter(
+            [
+                probe.source,
+                tester.source,
+            ],
+            packet.sink
+        )
+ 
+        # Dispatcher
+        self.submodules.dispatcher = dispatcher = Dispatcher(
+            packet.source,
+            [
+                tester.sink,
+                probe.sink
+            ]
+        )
+        self.comb += [dispatcher.sel.eq(packet.source.pf)]
+                

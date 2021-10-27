@@ -1,54 +1,49 @@
 #!/usr/bin/python3
 from migen import *
 from litex.soc.interconnect import stream
-from testframe import testFrameDescriptor
+from cores.tf.framing import K2MMPacket
 
 class TestFrameChecker(Module):
-    class Buffered(Module):
-        def __init__(self, data :Signal):
-            self.buf = buf = Signal().like(data)
-            self.sync += [buf.eq(data)]
-
-    def __init__(self, maxlen=65536, data_width=256, error_counter_width=32):
-        self.timer_stop = Signal()
-        self.err_count = Signal(error_counter_width)
-        self.err_count_reset = Signal()
-        self.data_matched = data_matched = Signal()
-        self.frame_valid = frame_valid = Signal()
-        self.sink = stream.Endpoint(testFrameDescriptor(data_width))
-
+    def __init__(self, maxlen=65535, dw=256, error_counter_width=32):
+        
+        # Test frame (sink)
+        self.sink = sink = stream.Endpoint(K2MMPacket.packet_user_description(dw=dw))
+        self.source_tf_status = source_tf_status = stream.Endpoint(
+            stream.EndpointDescription(
+                [
+                    ("err", 1),
+                    ("length", log2_int(maxlen+1))
+                ]
+            )
+        )
         # # #
-        databuf = self.Buffered(self.sink.data)
         beats = Signal(max=maxlen, reset_less=True)
-        self.comb += [data_matched.eq(databuf.buf == Replicate(beats, data_width//len(beats)))]
+        data_matched = Signal()
+
+        self.comb += [
+            data_matched.eq(
+                (sink.data == Replicate(beats, dw//len(beats))) & (sink.valid & sink.ready)),
+            sink.ready.eq(1)
+        ]
+
         _frame_err = Signal()
-        fsm = FSM(reset_state="IDLE")
-        fsm.act("IDLE",
-            self.sink.ready.eq(1),
-            If(self.sink.valid,
-                NextValue(beats, 0),
-                NextValue(_frame_err, _frame_err & (~data_matched)),
-                If(self.sink.last,
-                    NextState("LAST")
+        
+        # Counter
+        self.sync += [
+            If(sink.valid & sink.ready,
+                If(sink.last,
+                    beats.eq(0),
+                    _frame_err.eq(0),
+                    source_tf_status.valid.eq(1),
+                    source_tf_status.err.eq(_frame_err),
+                    source_tf_status.length.eq((beats + 1) * (dw//8)),
                 ).Else(
-                    NextState("RUN"),
+                    source_tf_status.valid.eq(0),
+                    beats.eq(beats + 1),
+                    _frame_err.eq(_frame_err | ~data_matched)
                 )
+            ).Else(
+                source_tf_status.valid.eq(0)
             )
-        )
-        fsm.act("RUN",
-            self.sink.ready.eq(1),
-            If(self.sink.valid,
-                NextValue(beats, beats + 1),
-                NextValue(_frame_err, _frame_err & (~data_matched)),
-                If(self.sink.last, NextState("LAST"))
-            )
-        )
-        fsm.act("LAST",
-            self.timer_stop.eq(1),
-            self.frame_valid.eq(~_frame_err),
-            self.sink.ready.eq(0),
-            NextValue(beats, 0),
-            NextState("IDLE")
-        )
-        self.submodules.fsm = fsm
-        self.submodules += databuf
+        ]
+
