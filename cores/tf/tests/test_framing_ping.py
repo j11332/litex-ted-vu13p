@@ -29,18 +29,18 @@ class _DUT(Module):
             yield
         
     def tfg_test(self):
-        yield from self.put_request(0)    
-        yield from self.put_request(1)
-        yield from self.put_request(2)
-        yield from self.put_request(10)
-        yield
+        _test_frame_beats = [
+            0, 1, 2, 10, 50, 100
+        ]
+        for l in _test_frame_beats:
+            yield from self.put_request(l)
         yield
 
     @passive
     def print_latency(self):
         while True:
             if ((yield self.k2mm.tester.source_status.valid) & (yield self.k2mm.tester.source_status.ready)):
-                print("len={} latency={}".format(
+                print("Frame Length: {}, Latency: {} cycle[s]".format(
                         (yield self.k2mm.tester.source_status.length),
                         (yield self.k2mm.tester.source_status.latency),
                     )
