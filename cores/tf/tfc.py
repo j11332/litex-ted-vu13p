@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 from migen import *
 from litex.soc.interconnect import stream
-from cores.tf.framing import K2MMPacket
+from cores.tf.packet import K2MMPacket
 
 class TestFrameChecker(Module):
     def __init__(self, maxlen=65535, dw=256, error_counter_width=32):

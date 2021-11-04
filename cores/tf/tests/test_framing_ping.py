@@ -11,10 +11,9 @@ class _DUT(Module):
     def __init__(self, dw=32):
         self.submodules.k2mm = k2mm = K2MM(dw=dw)
         self.submodules.k2mm_peer = k2mm_peer = K2MM(dw=dw)
-
         self.comb += [
-            k2mm.packet.ptx.source.connect(k2mm_peer.packet.prx.sink),
-            k2mm_peer.packet.ptx.source.connect(k2mm.packet.prx.sink)
+            k2mm.packet.source_packet_tx.connect(k2mm_peer.packet.sink_packet_rx),
+            k2mm_peer.packet.source_packet_tx.connect(k2mm.packet.sink_packet_rx)
         ]
 
     def put_request(self, len):

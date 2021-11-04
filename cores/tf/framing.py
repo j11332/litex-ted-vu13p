@@ -5,7 +5,7 @@ from cores.tf.tfc import TestFrameChecker
 from liteeth.common import eth_udp_user_description
 from litex.soc.interconnect.packet import (Arbiter, Depacketizer, Dispatcher,
                                            Header, HeaderField, Packetizer)
-from litex.soc.interconnect.stream import Endpoint, EndpointDescription
+from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
 from migen import *
 
 class K2MMPacketTX(Module):
@@ -125,13 +125,26 @@ class K2MMProbe(Module):
         )
        
 class _K2MMPacketParser(Module):
-    def __init__(self, dw=32):
+    def __init__(self, dw=32, bufferrized=True, fifo_depth=4):
         
         # TX/RX packet
         self.submodules.ptx = ptx = K2MMPacketTX(dw=dw)
         self.submodules.prx = prx = K2MMPacketRX(dw=dw)
         
-        self.sink, self.source = self.ptx.sink, self.prx.source
+        self.sink, self.source = ptx.sink, prx.source
+        
+        if bufferrized:
+            tx_buffer = SyncFIFO(ptx.source.description, depth=fifo_depth)
+            rx_buffer = SyncFIFO(prx.sink.description, depth=fifo_depth)
+            self.submodules += [tx_buffer, rx_buffer]
+            self.comb += [
+                ptx.source.connect(tx_buffer.sink),
+                rx_buffer.source.connect(prx.sink)
+            ]
+            self.source_packet_tx, self.sink_packet_rx = tx_buffer.source, rx_buffer.sink
+        else:
+            self.source_packet_tx = ptx.source
+            self.sink_packet_rx = prx.sink
 
 class _K2MMTester(Module):
     def __init__(self, dw=32):
@@ -147,11 +160,18 @@ class _K2MMTester(Module):
             tfg.source.connect(source)
         ]
 
+from litex.soc.interconnect.stream import Endpoint
+
 class K2MM(Module):
     def __init__(self, dw=32):
         # Packet parser
         self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
-
+        self.source_packet_tx = Endpoint(packet.source_packet_tx.description)
+        self.sink_packet_rx = Endpoint(packet.sink_packet_rx.description)
+        self.comb += [
+            packet.source_packet_tx.connect(self.source_packet_tx),
+            self.sink_packet_rx.connect(packet.sink_packet_rx)
+        ]
         # function modules
         self.submodules.probe = probe = K2MMProbe(dw=dw)
         self.submodules.tester = tester = _K2MMTester(dw=dw)
@@ -174,4 +194,9 @@ class K2MM(Module):
             ]
         )
         self.comb += [dispatcher.sel.eq(packet.source.pf)]
-                
+
+
+if __name__ == "__main__":
+    from migen.fhdl.verilog import convert
+    k2mm = K2MM()
+    convert(k2mm).write("K2MM.v")
