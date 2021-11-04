@@ -12,35 +12,47 @@ class _DUT(Module):
         self.submodules.k2mm = k2mm = K2MM(dw=dw)
         self.submodules.k2mm_peer = k2mm_peer = K2MM(dw=dw)
         self.comb += [
-            k2mm.packet.source_packet_tx.connect(k2mm_peer.packet.sink_packet_rx),
-            k2mm_peer.packet.source_packet_tx.connect(k2mm.packet.sink_packet_rx)
+            k2mm.source_packet_tx.connect(k2mm_peer.sink_packet_rx),
+            k2mm_peer.source_packet_tx.connect(k2mm.sink_packet_rx)
         ]
 
     def put_request(self, len):
-        ep = self.k2mm.tester.tfg.sink_ctrl
+        ep = self.k2mm.tester.sink_ctrl
         yield ep.length.eq(len)
         yield ep.valid.eq(1)
         yield
         while (yield ep.ready) == 0:
             yield
         yield ep.valid.eq(0)
-        
-        while ((yield self.k2mm.tester.tfg.source.last) == 0):
-            yield
         yield
-
+        for _ in range(len*2):
+            yield
+        
     def tfg_test(self):
         yield from self.put_request(0)    
         yield from self.put_request(1)
         yield from self.put_request(2)
         yield from self.put_request(10)
         yield
+        yield
+
+    @passive
+    def print_latency(self):
+        while True:
+            if ((yield self.k2mm.tester.source_status.valid) & (yield self.k2mm.tester.source_status.ready)):
+                print("len={} latency={}".format(
+                        (yield self.k2mm.tester.source_status.length),
+                        (yield self.k2mm.tester.source_status.latency),
+                    )
+                )
+            yield
 
     def run_sim(self, **args):
         
         _generators = {
             "sys" : [
                 self.tfg_test(),
+                self.print_latency(),
             ],
         }
         

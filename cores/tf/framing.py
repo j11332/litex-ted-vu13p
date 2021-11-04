@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from re import M
 from cores.tf.packet import K2MMPacket
 from cores.tf.tfg import TestFrameGenerator
 from cores.tf.tfc import TestFrameChecker
@@ -147,19 +148,52 @@ class _K2MMPacketParser(Module):
             self.sink_packet_rx = prx.sink
 
 class _K2MMTester(Module):
-    def __init__(self, dw=32):
+    def __init__(self, dw=32, max_latency=65536):
         self.sink   = sink   = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
         
         # # #
 
         self.submodules.tfg = tfg = TestFrameGenerator(data_width=dw)
+        self.sink_ctrl = Endpoint(tfg.sink_ctrl.description)
+
         self.submodules.tfc = tfc = TestFrameChecker(dw=dw)
         self.comb += [
             sink.connect(tfc.sink),
             tfg.source.connect(source)
         ]
 
+        self.latency = latency = Signal(max=max_latency)
+
+        fsm = FSM(reset_state="STOP")
+        fsm.act("STOP",
+            self.sink_ctrl.connect(tfg.sink_ctrl),
+            If(tfg.sink_ctrl.valid & tfg.sink_ctrl.ready,
+                NextState("COUNT_LATENCY"),
+                NextValue(latency, 0),
+            ),
+        )
+
+        fsm.act("COUNT_LATENCY",
+            NextValue(latency, latency + 1),
+            tfc.source_tf_status.ready.eq(1),
+            If(tfc.source_tf_status.valid == 1,
+                NextState("STOP")
+            ),
+        )
+        self.submodules += fsm
+        self.source_status = Endpoint(
+            EndpointDescription(
+                tfc.source_tf_status.description.payload_layout + 
+                    [("latency", latency.nbits)],
+                tfc.source_tf_status.description.param_layout)
+        )
+        self.comb += [
+            tfc.source_tf_status.connect(self.source_status, omit={"latency"}),
+            self.source_status.latency.eq(latency),
+            self.source_status.ready.eq(1)
+        ]
+        
 from litex.soc.interconnect.stream import Endpoint
 
 class K2MM(Module):
@@ -194,7 +228,6 @@ class K2MM(Module):
             ]
         )
         self.comb += [dispatcher.sel.eq(packet.source.pf)]
-
 
 if __name__ == "__main__":
     from migen.fhdl.verilog import convert
