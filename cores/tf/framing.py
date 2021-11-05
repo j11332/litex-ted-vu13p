@@ -194,14 +194,15 @@ class _K2MMTester(Module):
             self.source_status.ready.eq(1)
         ]
         
-from litex.soc.interconnect.stream import Endpoint
+from litex.soc.interconnect.stream import Endpoint, DIR_SOURCE, DIR_SINK
+from util.axi import EP2AXI
 
 class K2MM(Module):
     def __init__(self, dw=32):
         # Packet parser
         self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
-        self.source_packet_tx = Endpoint(packet.source_packet_tx.description)
-        self.sink_packet_rx = Endpoint(packet.sink_packet_rx.description)
+        self.source_packet_tx = Endpoint(packet.source_packet_tx.description, name="pkt_tx")
+        self.sink_packet_rx = Endpoint(packet.sink_packet_rx.description, name="pkt_rx")
         self.comb += [
             packet.source_packet_tx.connect(self.source_packet_tx),
             self.sink_packet_rx.connect(packet.sink_packet_rx)
@@ -209,7 +210,9 @@ class K2MM(Module):
         # function modules
         self.submodules.probe = probe = K2MMProbe(dw=dw)
         self.submodules.tester = tester = _K2MMTester(dw=dw)
-        
+        self.source_tester_status = tester.source_status
+        self.sink_tester_ctrl = tester.sink_ctrl
+
         # Arbitrate source endpoints
         self.submodules.arbiter = arbiter = Arbiter(
             [
@@ -232,4 +235,16 @@ class K2MM(Module):
 if __name__ == "__main__":
     from migen.fhdl.verilog import convert
     k2mm = K2MM()
-    convert(k2mm).write("K2MM.v")
+    _axi_map = {
+        "source_packet_tx"      : DIR_SOURCE,
+        "sink_packet_rx"        : DIR_SINK,
+    }
+    
+    k2mm = EP2AXI(_axi_map)(k2mm)
+    _ios = k2mm.ios
+    _ios += k2mm.sink_tester_ctrl.payload.flatten()
+    _ios += [k2mm.sink_tester_ctrl.valid, k2mm.sink_tester_ctrl.ready]
+    _ios += k2mm.source_tester_status.payload.flatten()
+    _ios += [k2mm.source_tester_status.valid, k2mm.source_tester_status.ready]
+    
+    convert(k2mm, ios=set(_ios)).write("K2MM.v")
