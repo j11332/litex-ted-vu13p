@@ -39,7 +39,20 @@ _io = [
         Subsignal("rx", Pins("BF18"), IOStandard("LVCMOS12")),
         Subsignal("tx", Pins("BB20"), IOStandard("LVCMOS12")),
     ),
-
+    
+    ("qsfp", 0,
+        Subsignal("rx_n", Pins(4)),
+        Subsignal("rx_p", Pins(4)),
+        Subsignal("tx_n", Pins(4)),
+        Subsignal("tx_p", Pins("F7 G9 H7 J9")),
+    ),
+    ("qsfp", 1,
+        Subsignal("rx_n", Pins(4)),
+        Subsignal("rx_p", Pins(4)),
+        Subsignal("tx_n", Pins(4)),
+        Subsignal("tx_p", Pins("K7 L9 M7 N9")),
+    ),
+    
     # PCIe
     ("pcie_x2", 0,
         Subsignal("rst_n", Pins("BD21"), IOStandard("LVCMOS12")),

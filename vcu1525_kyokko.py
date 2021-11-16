@@ -23,21 +23,23 @@ from cores.kyokko.phy.phy_usp_gty import USPGTY4
 from cores.kyokko.kyokko import Kyokko
 
 class _CRG(Module):
-
     def __init__(self, platform : Platform, sys_clk_freq):
         self.rst = Signal()
         self.clock_domains.cd_sys    = ClockDomain()
         self.clock_domains.cd_sys4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_pll4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_idelay = ClockDomain()
-
+        self.clock_domains.cd_clk100 = ClockDomain()
         # PLL
         self.submodules.pll = pll = USMMCM(speedgrade=-2)
         pll.register_clkin(platform.request("sys_clk", 0), 300e6)
         pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
         pll.create_clkout(self.cd_idelay, 500e6)
+        pll.create_clkout(self.cd_clk100, 100e6, buf="bufg", with_reset=True)
+                
         platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin) # Ignore sys_clk to pll.clkin path created by SoC's rst.
-
+        platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin)
+        
         self.comb += pll.reset.eq(self.rst)
 
         self.specials += [
@@ -49,6 +51,7 @@ class _CRG(Module):
         ]
 
         self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
+        
 
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(125e6), disable_sdram=False, **kwargs):
@@ -80,7 +83,15 @@ class BaseSoC(SoCCore):
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
         
-        self.submodules += USPGTY4(platform, "kyokko_phy", platform.request("qsfp0_refclk161m"))
+        self.submodules.kyokko_phy = kyokko_phy = USPGTY4(
+            platform, 
+            "kyokko_phy", 
+            platform.request("qsfp0_refclk161m"),
+            platform.request("qsfp", 0))
+        
+        self.submodules.kyokko = kyokko = Kyokko(platform, kyokko_phy)
+        kyokko.add_sources(platform)
+                
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
