@@ -51,11 +51,9 @@ class Kyokko(Module):
         )
         self.comb += self.user_rx_source.ready.eq(1)
         self.submodules.phy = phy
-        ky_reset = Signal()
-        self.comb += ky_reset.eq((~self.init_clk_locked))
         self.kyokko_params.update(
             i_clk = ClockSignal(cd_freerun),
-            i_reset = ky_reset,
+            i_reset = ResetSignal(cd_freerun),
             o_gtwiz_userclk_tx_reset_out = phy.userclk_tx_reset,
             i_gtwiz_userclk_tx_usrclk2_in = phy.userclk_tx_usrclk2,
             o_gtwiz_userclk_rx_reset_out = phy.userclk_rx_reset,
@@ -99,3 +97,57 @@ class Kyokko(Module):
             
     def do_finalize(self):
         self.specials += Instance("kyokko_cb_wrapper", **self.kyokko_params)
+
+
+class KyokkoBlock(Module):
+    def __init__(self, platform, pads, refclk, cd="sys", cd_freerun="sys", lanes=4):
+        _dp_layout = stream.EndpointDescription([
+                ("data", 64 * lanes),
+                # ("keep", (64 * lanes) // 8)
+            ]
+        )
+        self.platform = platform
+        self.sink_user_tx = stream.Endpoint(_dp_layout)
+        self.source_user_rx = stream.Endpoint(_dp_layout)
+        self.clock_domains.cd_datapath = ClockDomain()
+        
+        # CDC
+        cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(stream.AsyncFIFO(self.sink_user_tx.description))
+        cdc_rx = ClockDomainsRenamer({"write" : "datapath", "read" : cd})(stream.AsyncFIFO(self.source_user_rx.description))
+        self.comb += [
+            self.sink_user_tx.connect(cdc_tx.sink),
+            cdc_rx.source.connect(self.source_user_rx)
+        ]
+        self.submodules += [ cdc_tx, cdc_rx ]
+
+        self.user_reset = Signal()
+        self.lane_up    = Signal(lanes, reset_less=True)
+        self.channel_up = Signal(reset_less=True)
+
+        self.core_params = dict(
+            i_clk         = ClockSignal(cd_freerun),
+            i_reset       = self.user_reset,
+            o_channel_up  = self.channel_up,
+            o_lane_up     = self.lane_up,
+            o_user_clk    = ClockSignal(cd="datapath"),
+            
+            # User data TX/RX
+            i_s_axis_tx_tdata   = cdc_tx.source.data,
+            i_s_axis_tx_tlast   = cdc_tx.source.last,
+            i_s_axis_tx_tvalid  = cdc_tx.source.valid,
+            o_s_axis_tx_tready  = cdc_tx.source.ready,
+            o_m_axis_rx_tdata   = cdc_rx.sink.data,
+            o_m_axis_rx_tlast   = cdc_rx.sink.last,
+            o_m_axis_rx_tvalid  = cdc_rx.sink.valid,
+
+            # GTY Pads
+            i_gtyrxn            = pads.rx_n,
+            i_gtyrxp            = pads.rx_p,
+            o_gtytxn            = pads.tx_n,
+            o_gtytxp            = pads.tx_p,
+            i_gt_refclk_clk_p   = refclk.clk_p if hasattr(refclk, "clk_p") else refclk.p,
+            i_gt_refclk_clk_n   = refclk.clk_n if hasattr(refclk, "clk_n") else refclk.n,
+        )
+
+    def do_finalize(self):
+        self.specials += Instance("kyokko_gty4", **self.core_params, name="kyokko_gty4_i")

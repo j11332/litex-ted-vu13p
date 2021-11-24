@@ -198,7 +198,8 @@ from litex.soc.interconnect.stream import Endpoint, DIR_SOURCE, DIR_SINK
 from util.axi import EP2AXI
 
 class K2MM(Module):
-    def __init__(self, dw=32):
+    def __init__(self, dw=32, cd="sys"):
+        
         # Packet parser
         self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
         self.source_packet_tx = Endpoint(packet.source_packet_tx.description, name="pkt_tx")
@@ -207,6 +208,7 @@ class K2MM(Module):
             packet.source_packet_tx.connect(self.source_packet_tx),
             self.sink_packet_rx.connect(packet.sink_packet_rx)
         ]
+
         # function modules
         self.submodules.probe = probe = K2MMProbe(dw=dw)
         self.submodules.tester = tester = _K2MMTester(dw=dw)
@@ -232,19 +234,80 @@ class K2MM(Module):
         )
         self.comb += [dispatcher.sel.eq(packet.source.pf)]
 
+    def get_ios(self):
+        return [
+            self.source_packet_tx,
+            self.sink_packet_rx,
+            self.source_tester_status,
+            self.sink_tester_ctrl,
+        ]
+
+class K2MMBlock(Module):
+    def __init__(self, cd="sys", platform=None, name="k2mm", **kwargs):
+        from migen.fhdl.verilog import convert, list_targets
+        
+        k2mm = K2MM(**kwargs)
+        io_intf = k2mm.get_ios()
+        
+        module2wrapper = dict()
+        # Duplicate Interfaces
+        for port in io_intf:
+            if isinstance(port, Endpoint):
+                setattr(self, port.name, Endpoint(port.description, name=port.name))
+                for subsig in getattr(self, port.name).flatten():
+                    module2wrapper[subsig.backtrace[-1][0]] = subsig
+            elif isinstance(port, Signal):
+                signame = port.backtrace[-1][0]
+                setattr(self, signame, Signal.like(port))
+                
+            else:
+                TypeError()
+        
+        k2mm = k2mm.get_fragment()
+        targets = list_targets(k2mm)
+
+        _ios = []
+        inst_cfg = []
+
+        for io in io_intf:
+            if isinstance(io, Record):
+                for _epsig in io.flatten():
+                    _ios += io.flatten()
+            elif isinstance(io, Signal):
+                _ios += [io]
+            
+            for _s in _ios:
+                _dir_prefix = "o_" if _s in targets else "i_"
+                var_name = _s.backtrace[-1][0]
+                inst_cfg += [(_dir_prefix + var_name, var_name)]
+        
+        inst_param = dict()
+        # property, signal_name 
+        for p, sn in inst_cfg:
+            inst_param[p] = module2wrapper[sn]
+            
+        self.specials += Instance("k2mm", 
+            i_sys_clk = ClockSignal(cd),
+            i_sys_rst = ResetSignal(cd),
+            **inst_param
+        )
+
 if __name__ == "__main__":
-    from migen.fhdl.verilog import convert
-    k2mm = K2MM()
+    
+    from migen.fhdl.verilog import convert, list_targets
+
+    k2mm = K2MMBlock()
+    convert(k2mm).write("k2mmblock.v")
     _axi_map = {
         "source_packet_tx"      : DIR_SOURCE,
         "sink_packet_rx"        : DIR_SINK,
     }
     
-    k2mm = EP2AXI(_axi_map)(k2mm)
-    _ios = k2mm.ios
-    _ios += k2mm.sink_tester_ctrl.payload.flatten()
-    _ios += [k2mm.sink_tester_ctrl.valid, k2mm.sink_tester_ctrl.ready]
-    _ios += k2mm.source_tester_status.payload.flatten()
-    _ios += [k2mm.source_tester_status.valid, k2mm.source_tester_status.ready]
+    # k2mm = EP2AXI(_axi_map)(k2mm)
+    # _ios = k2mm.ios
+    # _ios += k2mm.sink_tester_ctrl.payload.flatten()
+    # _ios += [k2mm.sink_tester_ctrl.valid, k2mm.sink_tester_ctrl.ready]
+    # _ios += k2mm.source_tester_status.payload.flatten()
+    # _ios += [k2mm.source_tester_status.valid, k2mm.source_tester_status.ready]
+
     
-    convert(k2mm, ios=set(_ios)).write("K2MM.v")

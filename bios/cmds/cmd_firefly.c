@@ -204,9 +204,9 @@ static void get_si5341_n_divider_handler(int nb_params, char **params)
 	}
 
 	printf("device_num=%u, divider_num=%u\n", device_num, divider_num);
-	printf("n_num_h=0x%03x\n", n_num_h);
-	printf("n_num_l=0x%08x\n", n_num_l);
-	printf("n_den=0x%08x\n", n_den);
+	printf("n_num_h=0x%03lx\n", n_num_h);
+	printf("n_num_l=0x%08lx\n", n_num_l);
+	printf("n_den=0x%08lx\n", n_den);
 
 	return;
 

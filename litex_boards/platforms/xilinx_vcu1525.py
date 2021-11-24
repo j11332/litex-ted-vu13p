@@ -9,7 +9,12 @@ import json
 from litex.build.generic_platform import Pins, Subsignal, IOStandard, Misc
 from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
 import os.path
-# IOs ----------------------------------------------------------------------------------------------
+
+def _diff_clk(name, id, pin_n, pin_p):
+    return (name, id,
+        Subsignal("n", Pins(pin_n)),
+        Subsignal("p", Pins(pin_p))
+    )
 
 _io = [
     ("qsfp", 0,
@@ -24,22 +29,10 @@ _io = [
         Subsignal("tx_n", Pins("U8 T6 R8 P6")),
         Subsignal("tx_p", Pins("U9 T7 R9 P7")),
     ),
-    ("qsfp0_refclk156m", 0,
-        Subsignal("n", Pins("m10")),
-        Subsignal("p", Pins("m11"))
-    ),
-    ("qsfp0_refclk161m", 0,
-        Subsignal("n", Pins("k10")),
-        Subsignal("p", Pins("k11")),
-    ),
-    ("qsfp1_refclk156m", 0,
-        Subsignal("n", Pins("T10")),
-        Subsignal("p", Pins("T11"))
-    ),
-    ("qsfp1_refclk161m", 0,
-        Subsignal("n", Pins("P10")),
-        Subsignal("p", Pins("P11")),
-    ),
+    _diff_clk("qsfp0_refclk156m", 0, "m10", "m11"),
+    _diff_clk("qsfp0_refclk161m", 0, "k10", "k11"),
+    _diff_clk("qsfp1_refclk156m", 0, "T10", "T11"),
+    _diff_clk("qsfp1_refclk161m", 0, "P10", "P11"),
     # Clk / Rst
     ("sys_clk", 0,
         Subsignal("n", Pins("AY38"), IOStandard("DIFF_SSTL12")),
@@ -288,31 +281,33 @@ _io = [
     ),
 ]
 
-# Connectors ---------------------------------------------------------------------------------------
-
 _connectors = []
-
-# Platform -----------------------------------------------------------------------------------------
 _gty4_params = {
-    "CONFIG.CHANNEL_ENABLE"          : "X0Y23 X0Y22 X0Y21 X0Y20",
+    "CONFIG.CHANNEL_ENABLE"          : "X0Y31 X0Y30 X0Y29 X0Y28",
+    "CONFIG.DISABLE_LOC_XDC"         : "1",
     "CONFIG.FREERUN_FREQUENCY"       : "100",
+    "CONFIG.INTERNAL_PRESET"         : "Aurora_64B66B",
     "CONFIG.LOCATE_RX_USER_CLOCKING" : "CORE",
     "CONFIG.LOCATE_TX_USER_CLOCKING" : "CORE",
     "CONFIG.PRESET"                  : "GTY-Aurora_64B66B",
     "CONFIG.RX_CB_MAX_LEVEL"         : "2",
     "CONFIG.RX_DATA_DECODING"        : "64B66B_ASYNC",
+    "CONFIG.RX_INT_DATA_WIDTH"       : "64",
     "CONFIG.RX_JTOL_FC"              : "10",
     "CONFIG.RX_LINE_RATE"            : "25.78125",
-    "CONFIG.RX_MASTER_CHANNEL"       : "X0Y23",
+    "CONFIG.RX_MASTER_CHANNEL"       : "X0Y28",
     "CONFIG.RX_OUTCLK_SOURCE"        : "RXPROGDIVCLK",
     "CONFIG.RX_REFCLK_FREQUENCY"     : "161.1328125",
     "CONFIG.RX_REFCLK_SOURCE"        : "",
+    "CONFIG.RX_USER_DATA_WIDTH"      : "64",
     "CONFIG.TXPROGDIV_FREQ_VAL"      : "390.625",
     "CONFIG.TX_DATA_ENCODING"        : "64B66B_ASYNC",
+    "CONFIG.TX_INT_DATA_WIDTH"       : "64",
     "CONFIG.TX_LINE_RATE"            : "25.78125",
-    "CONFIG.TX_MASTER_CHANNEL"       : "X0Y23",
+    "CONFIG.TX_MASTER_CHANNEL"       : "X0Y28",
     "CONFIG.TX_OUTCLK_SOURCE"        : "TXPROGDIVCLK",
     "CONFIG.TX_REFCLK_FREQUENCY"     : "161.1328125",
+    "CONFIG.TX_USER_DATA_WIDTH"      : "64",
 }
 class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
@@ -373,31 +368,29 @@ class Platform(XilinxPlatform):
     
     def do_finalize(self, fragment):
         
-        self.add_ip_gty4()
         XilinxPlatform.do_finalize(self, fragment)
+
         # For passively cooled boards, overheating is a significant risk if airflow isn't sufficient
         self.add_platform_command("set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]")
+
         # Reduce programming time
         self.add_platform_command("set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]")
         
         # DDR4 memory channel C0 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("sys_clk", 0, loose=True), 1e9/300e6)
-        for bank in [40, 41, 42]:
-            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks {{40 41 42}}]")
 
         # DDR4 memory channel C1 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("sys_clk", 1, loose=True), 1e9/300e6)
-        for bank in [65, 66, 67]:
-            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks {{65 66 67}}]")
         
         # DDR4 memory channel C2 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("sys_clk", 2, loose=True), 1e9/300e6)
-        for bank in [46, 47, 48]:
-            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
-        # self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 46 47 48]")
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks {{46 47 48}}]")
         
         # DDR4 memory channel C3 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("sys_clk", 3, loose=True), 1e9/300e6)
-        for bank in [70, 71, 72]:
-            self.add_platform_command(f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]")
-        # self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks 70 71 72]")
+        self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks {{70 71 72}}]")
+
+        self.add_period_constraint(self.lookup_request("qsfp0_refclk156m", 0, loose=True), 1e9/156.25e6)
+        self.add_period_constraint(self.lookup_request("qsfp0_refclk161m", 0, loose=True), 1e9/161.1328125e6)

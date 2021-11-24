@@ -20,7 +20,8 @@ from litedram.phy import usddrphy
 from localbuilder import LocalBuilder
 
 from cores.kyokko.phy.phy_usp_gty import USPGTY4
-from cores.kyokko.kyokko import Kyokko
+from cores.kyokko.kyokko import KyokkoBlock
+from cores.tf.framing import K2MM
 
 class _CRG(Module):
     def __init__(self, platform : Platform, sys_clk_freq):
@@ -29,14 +30,13 @@ class _CRG(Module):
         self.clock_domains.cd_sys4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_pll4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_idelay = ClockDomain()
-        self.clock_domains.cd_clk100 = ClockDomain()
+
         # PLL
         self.submodules.pll = pll = USMMCM(speedgrade=-2)
-        pll.register_clkin(platform.request("sys_clk", 0), 300e6)
-        pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
-        pll.create_clkout(self.cd_idelay, 500e6)
-        pll.create_clkout(self.cd_clk100, 100e6, buf="bufg", with_reset=True)
-                
+        pll.register_clkin(platform.request("sys_clk", 1), 300e6)
+        pll.create_clkout(self.cd_pll4x, sys_clk_freq * 4, buf=None, with_reset=False)
+        pll.create_clkout(self.cd_idelay, sys_clk_freq * 2)
+
         platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin) # Ignore sys_clk to pll.clkin path created by SoC's rst.
         platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin)
         
@@ -54,7 +54,7 @@ class _CRG(Module):
         
 
 class BaseSoC(SoCCore):
-    def __init__(self, sys_clk_freq=int(125e6), disable_sdram=False, **kwargs):
+    def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
         platform = Platform()
 
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -76,27 +76,31 @@ class BaseSoC(SoCCore):
                     size          = 0x40000000,
                     l2_cache_size = kwargs.get("l2_size", 8192)
                 )
-        
+
         self.add_ram("firmware_ram", 0x20000000, 0x8000)
 
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
-        
-        self.submodules.kyokko_phy = kyokko_phy = USPGTY4(
+
+        self.submodules.kyokko = kyokko = KyokkoBlock(
             platform, 
-            "kyokko_phy", 
+            platform.request("qsfp", 0),
             platform.request("qsfp0_refclk161m"),
-            platform.request("qsfp", 0))
-        
-        self.submodules.kyokko = kyokko = Kyokko(platform, kyokko_phy)
-        kyokko.add_sources(platform)
-                
+        )
+
+        self.submodules.k2mm = k2mm = K2MM(dw=256)
+
+        self.comb += [
+            kyokko.source_user_rx.connect(k2mm.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+            k2mm.source_packet_tx.connect(kyokko.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+        ]
+    
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
     parser.add_argument("--load",         action="store_true", help="Load bitstream")
-    parser.add_argument("--sys-clk-freq", default=125e6,       help="System clock frequency (default: 200MHz)")
+    parser.add_argument("--sys-clk-freq", default=300e6,       help="System clock frequency (default: 300MHz)")
     parser.add_argument("--disable_sdram", action="store_true", help="Build without onboard memory controller (default: false)")
     builder_args(parser)
     soc_core_args(parser)
@@ -107,6 +111,9 @@ def main():
         sys_clk_freq = int(float(args.sys_clk_freq)),
         **soc_core_argdict(args)
     )
+    from migen.fhdl.tools import list_signals
+    _sigs = list_signals(soc.get_fragment())
+
     builder = LocalBuilder(soc, **builder_argdict(args))
     builder.build(run=args.build)
 

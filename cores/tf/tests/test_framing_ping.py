@@ -64,5 +64,5 @@ class _DUT(Module):
                 
 if __name__ == "__main__":
     
-    dut = _DUT(dw=32)
+    dut = _DUT(dw=256)
     dut.run_sim(vcd_name="framing_ping.vcd")
