@@ -21,8 +21,9 @@ from localbuilder import LocalBuilder
 
 from cores.kyokko.phy.phy_usp_gty import USPGTY4
 from cores.kyokko.kyokko import KyokkoBlock
-from cores.tf.framing import K2MM
-
+from cores.tf.framing import K2MMBlock
+from litex.soc.cores.clock.common import *
+from litex.soc.cores.clock.xilinx_common import *
 class _CRG(Module):
     def __init__(self, platform : Platform, sys_clk_freq):
         self.rst = Signal()
@@ -30,7 +31,8 @@ class _CRG(Module):
         self.clock_domains.cd_sys4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_pll4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_idelay = ClockDomain()
-
+        self.clock_domains.cd_clk100  = ClockDomain()
+        
         # PLL
         self.submodules.pll = pll = USMMCM(speedgrade=-2)
         pll.register_clkin(platform.request("sys_clk", 1), 300e6)
@@ -41,11 +43,15 @@ class _CRG(Module):
         platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin)
         
         self.comb += pll.reset.eq(self.rst)
-
+        
         self.specials += [
             Instance("BUFGCE_DIV", name="main_bufgce_div",
                 p_BUFGCE_DIVIDE=4,
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys.clk),
+            Instance("BUFGCE_DIV", name="crg_buf_clk100",
+                p_BUFGCE_DIVIDE=6,
+                i_CE=1, i_I=self.cd_idelay.clk, o_O=self.cd_clk100.clk),
+            AsyncResetSynchronizer(self.cd_clk100, self.cd_sys.rst),
             Instance("BUFGCE", name="main_bufgce",
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys4x.clk),
         ]
@@ -87,9 +93,10 @@ class BaseSoC(SoCCore):
             platform, 
             platform.request("qsfp", 0),
             platform.request("qsfp0_refclk161m"),
+            cd_freerun="clk100"
         )
 
-        self.submodules.k2mm = k2mm = K2MM(dw=256)
+        self.submodules.k2mm = k2mm = K2MMBlock(platform=platform, dw=256)
 
         self.comb += [
             kyokko.source_user_rx.connect(k2mm.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
@@ -111,11 +118,18 @@ def main():
         sys_clk_freq = int(float(args.sys_clk_freq)),
         **soc_core_argdict(args)
     )
-    from migen.fhdl.tools import list_signals
-    _sigs = list_signals(soc.get_fragment())
 
     builder = LocalBuilder(soc, **builder_argdict(args))
-    builder.build(run=args.build)
+    vns = builder.build(run=args.build)
+
+    from cores.tf.framing import K2MM
+    k2mm = K2MM(dw=256)
+    from migen.fhdl.verilog import convert
+    _ios = []
+    for ep in k2mm.get_ios():
+        _ios += ep.flatten()
+    verilog_filename = os.path.join(soc.platform.output_dir, "gateware", "k2mm.v")
+    convert(k2mm, ios=set(_ios), name="k2mm").write(verilog_filename)
 
     if args.load:
         prog = soc.platform.create_programmer()

@@ -202,8 +202,8 @@ class K2MM(Module):
         
         # Packet parser
         self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
-        self.source_packet_tx = Endpoint(packet.source_packet_tx.description, name="pkt_tx")
-        self.sink_packet_rx = Endpoint(packet.sink_packet_rx.description, name="pkt_rx")
+        self.source_packet_tx = Endpoint(packet.source_packet_tx.description, name="source_packet_tx")
+        self.sink_packet_rx = Endpoint(packet.sink_packet_rx.description, name="sink_packet_rx")
         self.comb += [
             packet.source_packet_tx.connect(self.source_packet_tx),
             self.sink_packet_rx.connect(packet.sink_packet_rx)
@@ -212,8 +212,12 @@ class K2MM(Module):
         # function modules
         self.submodules.probe = probe = K2MMProbe(dw=dw)
         self.submodules.tester = tester = _K2MMTester(dw=dw)
-        self.source_tester_status = tester.source_status
-        self.sink_tester_ctrl = tester.sink_ctrl
+        self.source_tester_status = Endpoint(tester.source_status.description)
+        self.sink_tester_ctrl = Endpoint(tester.sink_ctrl.description)
+        self.comb += [
+            tester.source_status.connect(self.source_tester_status),
+            self.sink_tester_ctrl.connect(tester.sink_ctrl)
+        ]
 
         # Arbitrate source endpoints
         self.submodules.arbiter = arbiter = Arbiter(
@@ -244,8 +248,14 @@ class K2MM(Module):
 
 class K2MMBlock(Module):
     def __init__(self, cd="sys", platform=None, name="k2mm", **kwargs):
-        from migen.fhdl.verilog import convert, list_targets
-        
+        from migen.fhdl.verilog import list_targets
+        self.platform = platform
+        self.cd = cd
+        self.name = name
+        self.module_kwargs = kwargs
+        self.module_class = K2MM
+
+        self.mod = K2MM(**kwargs)
         k2mm = K2MM(**kwargs)
         io_intf = k2mm.get_ios()
         
@@ -267,29 +277,37 @@ class K2MMBlock(Module):
         targets = list_targets(k2mm)
 
         _ios = []
-        inst_cfg = []
+        inst_to_flattened_var = []
 
         for io in io_intf:
             if isinstance(io, Record):
-                for _epsig in io.flatten():
-                    _ios += io.flatten()
+                _ios += io.flatten()
             elif isinstance(io, Signal):
                 _ios += [io]
             
             for _s in _ios:
                 _dir_prefix = "o_" if _s in targets else "i_"
                 var_name = _s.backtrace[-1][0]
-                inst_cfg += [(_dir_prefix + var_name, var_name)]
+                inst_to_flattened_var += [(_dir_prefix + var_name, var_name)]
         
         inst_param = dict()
         # property, signal_name 
-        for p, sn in inst_cfg:
+        for p, sn in inst_to_flattened_var:
             inst_param[p] = module2wrapper[sn]
-            
-        self.specials += Instance("k2mm", 
-            i_sys_clk = ClockSignal(cd),
-            i_sys_rst = ResetSignal(cd),
-            **inst_param
+        
+        self.inst_param = inst_param
+    
+    def do_finalize(self):
+        import os.path
+        from migen.fhdl.verilog import convert
+        verilog_filename = os.path.join(self.platform.output_dir, "gateware", self.name + ".v")
+        # v = convert(self.module_class(**self.module_kwargs), name=self.name, ios=set(self.inst_param.values()))
+        # v.write(verilog_filename)
+        # self.platform.add_source(verilog_filename)
+        self.specials += Instance("k2mm",
+            i_sys_clk = ClockSignal(self.cd),
+            i_sys_rst = ResetSignal(self.cd),
+            **self.inst_param
         )
 
 if __name__ == "__main__":
@@ -298,16 +316,4 @@ if __name__ == "__main__":
 
     k2mm = K2MMBlock()
     convert(k2mm).write("k2mmblock.v")
-    _axi_map = {
-        "source_packet_tx"      : DIR_SOURCE,
-        "sink_packet_rx"        : DIR_SINK,
-    }
-    
-    # k2mm = EP2AXI(_axi_map)(k2mm)
-    # _ios = k2mm.ios
-    # _ios += k2mm.sink_tester_ctrl.payload.flatten()
-    # _ios += [k2mm.sink_tester_ctrl.valid, k2mm.sink_tester_ctrl.ready]
-    # _ios += k2mm.source_tester_status.payload.flatten()
-    # _ios += [k2mm.source_tester_status.valid, k2mm.source_tester_status.ready]
-
     
