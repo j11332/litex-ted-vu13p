@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 from re import M
+
+from litex.soc.interconnect.csr import CSRStatus
 from cores.tf.packet import K2MMPacket
 from cores.tf.tfg import TestFrameGenerator
 from cores.tf.tfc import TestFrameChecker
@@ -309,7 +311,36 @@ class K2MMBlock(Module):
             i_sys_rst = ResetSignal(self.cd),
             **self.inst_param
         )
+from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
+class K2MMControl(Module, AutoCSR):
+    def __init__(self, k2mm : K2MM, dw=32):
+        self.source_ctrl = Endpoint(k2mm.sink_tester_ctrl.description)
+        self._probe_len = CSRStorage(
+            description = "Test frame length",
+            fields = [
+                CSRField("length", size=16, description="Test frame length"),
+            ],
+            name="prb_length")
+        self._probe_ctrl = CSRStorage(
+            description = "Test frame enable",
+            fields = [
+                CSRField("enable", size=1,  description="Send test frame")
+            ],
+            name = "prb_ctrl")
+        self._probe_status = CSRStatus(
+            description = "Probe status",
+            fields = [
+                CSRField("ready",  size=1, description="1 = Test frame command ready"),
+            ],
+            name="prb_stat"
+        )
 
+        self.comb += [
+            self.source_ctrl.length.eq(self._probe_len.fields.length),
+            self._probe_status.fields.ready.eq(self.source_ctrl.ready),
+            self.source_ctrl.valid.eq(self._probe_ctrl.fields.enable & self._probe_ctrl.re)
+        ]
+        
 if __name__ == "__main__":
     
     from migen.fhdl.verilog import convert, list_targets
