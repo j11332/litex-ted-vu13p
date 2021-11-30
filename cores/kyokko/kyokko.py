@@ -5,6 +5,8 @@ from cores.kyokko.phy.phy_usp_gty import USPGTY4
 import os.path
 from litex.build.xilinx import XilinxPlatform
 
+from cores.xpm_fifo import XPMAsyncStreamFIFO
+
 # create_ip -vlnv xilinx.com:ip:fifo_generator:* -module_name 
 _xilinx_fifo_66x512_async_ip = {
     "CONFIG.Data_Count_Width"           : "9",
@@ -98,8 +100,9 @@ class Kyokko(Module):
     def do_finalize(self):
         self.specials += Instance("kyokko_cb_wrapper", **self.kyokko_params)
 
-
-class KyokkoBlock(Module):
+from litex.soc.interconnect.csr import *
+from migen.genlib.cdc import PulseSynchronizer, BusSynchronizer, MultiReg
+class KyokkoBlock(Module, AutoCSR):
     def __init__(self, platform, pads, refclk, cd="sys", cd_freerun="sys", lanes=4):
         _dp_layout = stream.EndpointDescription([
                 ("data", 64 * lanes),
@@ -112,23 +115,37 @@ class KyokkoBlock(Module):
         self.clock_domains.cd_datapath = ClockDomain()
         
         # CDC
-        cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(stream.AsyncFIFO(self.sink_user_tx.description))
-        cdc_rx = ClockDomainsRenamer({"write" : "datapath", "read" : cd})(stream.AsyncFIFO(self.source_user_rx.description))
+        self.submodules.cdc_tx = cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(
+            XPMAsyncStreamFIFO(self.sink_user_tx.description, depth=128, buffered=True, sync_stages=4))
+        
+        self.submodules.cdc_rx = cdc_rx = ClockDomainsRenamer({"write" : "datapath", "read" : cd})(
+            XPMAsyncStreamFIFO(self.source_user_rx.description, depth=128, buffered=True, sync_stages=4))
+
         self.comb += [
             self.sink_user_tx.connect(cdc_tx.sink),
             cdc_rx.source.connect(self.source_user_rx)
         ]
-        self.submodules += [ cdc_tx, cdc_rx ]
+        
+        self._reset = CSRStorage(fields=[
+            CSRField("reset_pb", size=1, offset=0, description="""Write `1` to reset"""),
+        ])
+        self._status = CSRStatus(fields=[
+            CSRField("lane_up", size=lanes),
+            CSRField("channel_up", size=1),
+        ])
 
-        self.user_reset = Signal()
-        self.lane_up    = Signal(lanes, reset_less=True)
-        self.channel_up = Signal(reset_less=True)
-
+        # Status Register
+        channel_up = Signal()
+        self.specials += MultiReg(channel_up, self._status.fields.channel_up, odomain=cd, n=2)
+        
+        lane_up = Signal(lanes)
+        self.specials += MultiReg(lane_up, self._status.fields.lane_up, odomain=cd, n=2)
+                
         self.core_params = dict(
             i_clk         = ClockSignal(cd_freerun),
-            i_reset       = self.user_reset,
-            o_channel_up  = self.channel_up,
-            o_lane_up     = self.lane_up,
+            i_reset       = self._reset.fields.reset_pb,
+            o_channel_up  = channel_up,
+            o_lane_up     = lane_up,
             o_user_clk    = ClockSignal(cd="datapath"),
             
             # User data TX/RX
@@ -150,4 +167,13 @@ class KyokkoBlock(Module):
         )
 
     def do_finalize(self):
+        self.platform.add_platform_command("""
+set_false_path -from [get_pins -match_style ucf */tx/init/RX_STAT_TX_reg[*]/C]
+set_false_path -from [get_pins -match_style ucf */rxinit/LINK_ERR_TIMER_reg[*]/C]
+set_false_path -from [get_pins -match_style ucf */rxinit/RXSLIP_LIMIT_reg/C] -to [get_pins -match_style ucf */rxrst/RXSLIP_LIMITi_reg/D]
+set_false_path -to [get_pins -match_style ucf */RXRST100i_reg/*]""")
         self.specials += Instance("kyokko_gty4", **self.core_params, name="kyokko_gty4_i")
+    
+    def add_timing_constraints(self, platform, padgroup_name):
+        pass
+    

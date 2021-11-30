@@ -11,10 +11,49 @@ from litex.soc.interconnect.packet import (Arbiter, Depacketizer, Dispatcher,
 from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
 from migen import *
 
+from litex.soc.interconnect.stream import PipeValid, PipeReady
+
+class _SkidBuffer(Module):
+    def __init__(self, layout):
+        self.sink = sink = Endpoint(layout)
+        self.source = source = Endpoint(layout)
+
+        self.submodules.pv = pv = PipeValid(layout)
+        self.comb += self.sink.connect(pv.sink)
+
+        self.submodules.pr = pr = PipeReady(layout)
+        self.comb += [
+            pv.source.connect(pr.sink),
+            pr.source.connect(self.source)
+        ]
+
+# Add buffers on Endpoints (can be used to improve timings)
+class SkidBufferInsert(ModuleTransformer):
+    def __init__(self, endpoint_dict):
+        self.endpoint_dict = endpoint_dict
+
+    def transform_instance(self, submodule):
+        for name, direction in self.endpoint_dict.items():
+            endpoint = getattr(submodule, name)
+            # add buffer on sinks
+            if direction == DIR_SINK:
+                buf = _SkidBuffer(endpoint.description)
+                submodule.submodules += buf
+                setattr(submodule, name, buf.sink)
+                submodule.comb += buf.source.connect(endpoint)
+            # add buffer on sources
+            elif direction == DIR_SOURCE:
+                buf = _SkidBuffer(endpoint.description)
+                submodule.submodules += buf
+                submodule.comb += endpoint.connect(buf.sink)
+                setattr(submodule, name, buf.source)
+            else:
+                raise ValueError
+
 class K2MMPacketTX(Module):
             
     def __init__(self, udp_port=50000, dw=32):
-    
+
         class K2MMPacketizer(Packetizer):
             def __init__(self, dw=32):
                 super().__init__(
@@ -126,25 +165,34 @@ class K2MMProbe(Module):
                 )
             )
         )
-       
+        
 class _K2MMPacketParser(Module):
-    def __init__(self, dw=32, bufferrized=True, fifo_depth=4):
+    def __init__(self, dw=32, bufferrized=True, fifo_depth=256):
         
         # TX/RX packet
-        self.submodules.ptx = ptx = K2MMPacketTX(dw=dw)
-        self.submodules.prx = prx = K2MMPacketRX(dw=dw)
+        ptx = K2MMPacketTX(dw=dw)
+        ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
+        self.submodules.ptx = ptx
+
+        prx = K2MMPacketRX(dw=dw)
+        prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
+        self.submodules.prx = prx
         
         self.sink, self.source = ptx.sink, prx.source
-        
+        from cores.xpm_fifo import XPMStreamFIFO
         if bufferrized:
-            tx_buffer = SyncFIFO(ptx.source.description, depth=fifo_depth)
-            rx_buffer = SyncFIFO(prx.sink.description, depth=fifo_depth)
-            self.submodules += [tx_buffer, rx_buffer]
+            self.submodules.tx_buffer = tx_buffer = SyncFIFO(ptx.source.description, depth=fifo_depth, buffered=True)
+            self.submodules.rx_buffer = rx_buffer = SyncFIFO(prx.sink.description, depth=fifo_depth, buffered=True)
             self.comb += [
                 ptx.source.connect(tx_buffer.sink),
                 rx_buffer.source.connect(prx.sink)
             ]
-            self.source_packet_tx, self.sink_packet_rx = tx_buffer.source, rx_buffer.sink
+            self.source_packet_tx = Endpoint(tx_buffer.source.description)
+            self.sink_packet_rx = Endpoint(rx_buffer.sink.description)
+            self.comb += [
+                self.sink_packet_rx.connect(rx_buffer.sink),
+                tx_buffer.source.connect(self.source_packet_tx)
+            ]
         else:
             self.source_packet_tx = ptx.source
             self.sink_packet_rx = prx.sink

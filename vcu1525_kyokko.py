@@ -88,21 +88,34 @@ class BaseSoC(SoCCore):
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
+        
+        self._add_kyokko(platform)
 
+    def _add_kyokko(self, platform):
         self.submodules.kyokko = kyokko = KyokkoBlock(
             platform, 
             platform.request("qsfp", 0),
             platform.request("qsfp0_refclk161m"),
             cd_freerun="clk100"
         )
-
         self.submodules.k2mm = k2mm = K2MMBlock(platform=platform, dw=256)
-
         self.comb += [
             kyokko.source_user_rx.connect(k2mm.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
             k2mm.source_packet_tx.connect(kyokko.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
         ]
-    
+
+        self.submodules.ky_qsfp1 = ky1 = KyokkoBlock(
+            platform, 
+            platform.request("qsfp", 1),
+            platform.request("qsfp1_refclk161m"),
+            cd_freerun="clk100"
+        )
+        self.submodules.k2mm_qsfp1 = k2mm_qsfp1 = K2MMBlock(platform=platform, dw=256)
+        self.comb += [
+            ky1.source_user_rx.connect(k2mm_qsfp1.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+            k2mm_qsfp1.source_packet_tx.connect(ky1.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+        ]
+        
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")

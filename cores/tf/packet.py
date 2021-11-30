@@ -15,8 +15,8 @@ class _Header(Header):
     
     def get_user_layout(self):
         layout = []
-        for k, v in filter(lambda x: x[1].user == True, self.fields):
-            layout.append(k, v.width)
+        for k, v in filter(lambda x: x[1].user == True, self.fields.items()):
+            layout.append((k, v.width))
         return layout
 
 class K2MMPacket:
