@@ -312,9 +312,9 @@ _gty4_params = {
 class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
-    
+    part = "xcvu9p-fsgd2104-2l-e"
+
     def add_tcl_ip(self, ipdef, name, config):
-        
         self.toolchain.pre_synthesis_commands += [
             "create_ip "
             f"-vlnv {ipdef}:* "
@@ -339,12 +339,12 @@ class Platform(XilinxPlatform):
             "]",
             f"wait_on_run ${name}_run"
         ]
-        
+    
     def add_ip_gty4(self):
         self.add_tcl_ip("xilinx.com:ip:gtwizard_ultrascale", "gty4", _gty4_params)
 
     def __init__(self):
-        XilinxPlatform.__init__(self, "xcvu9p-fsgd2104-2l-e", _io, _connectors, toolchain="vivado")
+        XilinxPlatform.__init__(self, self.part, _io, _connectors, toolchain="vivado")
         self.set_ip_cache_dir("/home/e2/tmp/ip_cache")
         
     def create_programmer(self):
@@ -368,7 +368,7 @@ class Platform(XilinxPlatform):
     
     def do_finalize(self, fragment):
         
-        XilinxPlatform.do_finalize(self, fragment)
+        super().do_finalize(self, fragment)
 
         # For passively cooled boards, overheating is a significant risk if airflow isn't sufficient
         self.add_platform_command("set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]")
@@ -391,6 +391,12 @@ class Platform(XilinxPlatform):
         # DDR4 memory channel C3 Clock constraint / Internal Vref
         self.add_period_constraint(self.lookup_request("sys_clk", 3, loose=True), 1e9/300e6)
         self.add_platform_command("set_property INTERNAL_VREF 0.84 [get_iobanks {{70 71 72}}]")
-
-        self.add_period_constraint(self.lookup_request("qsfp0_refclk156m", 0, loose=True), 1e9/156.25e6)
-        self.add_period_constraint(self.lookup_request("qsfp0_refclk161m", 0, loose=True), 1e9/161.1328125e6)
+        
+        # GT Reference clock 0/1 for QSFP 0/1
+        for i in range(0, 2):
+            self.add_period_constraint(
+                self.lookup_request(f"qsfp{i}_refclk156m", 0, loose=True),
+                1e9/156.25e6)
+            self.add_period_constraint(
+                self.lookup_request(f"qsfp{i}_refclk161m", 0, loose=True),
+                1e9/161.1328125e6)

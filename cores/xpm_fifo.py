@@ -90,8 +90,11 @@ class XPMStreamFIFO(Module):
 
 class XPMAsyncStreamFIFO(Module):
     def __init__(self, layout, 
-        depth=16, cd_sink="write", cd_source="read", 
-        sync_stages=2, buffered=False, xpm=True):
+        depth=16, sync_stages=2, buffered=False, xpm=True):
+
+        cd_sink="write"
+        cd_source="read"
+
         if xpm == False:
             self.sink = stream.Endpoint(layout)
             self.source = stream.Endpoint(layout)

@@ -48,6 +48,8 @@ from litescope import LiteScopeAnalyzer
 _io = [
     ("sys_clk", 0, Pins(1)),
     ("sys_rst", 0, Pins(1)),
+    ("gt_sim_clk", 0, Pins(1)),
+    ("gt_sim_rst", 0, Pins(1)),
     ("serial", 0,
         Subsignal("source_valid", Pins(1)),
         Subsignal("source_ready", Pins(1)),
@@ -115,6 +117,31 @@ class Platform(SimPlatform):
     def __init__(self):
         SimPlatform.__init__(self, "SIM", _io)
 from cores.tf.framing import K2MMControl, K2MM
+
+class _CRG(Module):
+    def __init__(self, clk, clk_gt, rst=0):
+        self.clock_domains.cd_sys = ClockDomain()
+        self.clock_domains.cd_por = ClockDomain(reset_less=True)
+        
+        self.clock_domains.cd_sim_gt = ClockDomain()
+        self.clock_domains.cd_sim_gt_por = ClockDomain(reset_less=True)
+        
+        # Power on Reset (vendor agnostic)
+        int_rst = Signal(reset=1)
+        int_rst_gt = Signal(reset=1)
+
+        self.sync.por += int_rst.eq(rst)
+        self.sync.sim_gt_por += int_rst_gt.eq(rst)
+
+        self.comb += [
+            self.cd_sys.clk.eq(clk),
+            self.cd_por.clk.eq(clk),
+            self.cd_sys.rst.eq(int_rst),
+            self.cd_sim_gt.clk.eq(clk_gt),
+            self.cd_sim_gt_por.clk.eq(clk_gt),
+            self.cd_sim_gt.rst.eq(int_rst_gt),
+        ]
+
 class SimSoC(SoCCore):
     mem_map = {**SoCCore.mem_map, **{"spiflash": 0x80000000}}
     def __init__(self,
@@ -136,7 +163,7 @@ class SimSoC(SoCCore):
         spi_flash_init        = [],
         with_gpio             = False,
         sim_debug             = False,
-        trace_reset_on        = False,
+        trace_reset_on        = True,
         **kwargs):
         platform     = Platform()
         sys_clk_freq = int(1e6)
@@ -148,7 +175,7 @@ class SimSoC(SoCCore):
             **kwargs)
 
         # CRG --------------------------------------------------------------------------------------
-        self.submodules.crg = CRG(platform.request("sys_clk"))
+        self.submodules.crg = _CRG(platform.request("sys_clk"), platform.request("gt_sim_clk"))
 
         # SDRAM ------------------------------------------------------------------------------------
         if not self.integrated_main_ram_size and with_sdram:
@@ -291,25 +318,67 @@ class SimSoC(SoCCore):
             self.submodules.gpio = GPIOTristate(platform.request("gpio"), with_irq=True)
             self.irq.add("gpio", use_loc_if_exists=True)
 
-        # Simulation debugging ----------------------------------------------------------------------
-        platform.add_debug(self, reset=1 if trace_reset_on else 0)
+        # Simulation debugging
+        platform.add_debug(self, reset=1)        
+        self.trace_targets = []
+
+        self._add_kyokko(platform)
         
-        self.submodules.k2mm = k2mm = K2MM(dw=256)
-        self.submodules.k2mm_ctrl = k2mm_ctrl = K2MMControl(self.k2mm)
-        self.comb += k2mm_ctrl.source_ctrl.connect(k2mm.sink_tester_ctrl)
-                
-        self.submodules.k2mm_peer = k2mm_peer = K2MM(dw=256)
+    def _add_kyokko(self, platform):
+        from cores.tf.framing import K2MMControl, K2MMBlock
+        from model import KyokkoBlock
+
+        #
+        # Port #1
+        #
+        self.submodules.kyokko = kyokko = KyokkoBlock(
+            platform, 
+            None,
+            None,
+            cd_freerun=None
+        )
+        self.submodules.k2mm_qsfp0 = k2mm_qsfp0 = K2MM(dw=256)
         self.comb += [
-            k2mm.source_packet_tx.connect(k2mm_peer.sink_packet_rx),
-            k2mm_peer.source_packet_tx.connect(k2mm.sink_packet_rx),
+            kyokko.source_user_rx.connect(k2mm_qsfp0.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+            k2mm_qsfp0.source_packet_tx.connect(kyokko.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
         ]
+        self.submodules.k2mmctrl_0 = k2mmctrl_0 = K2MMControl(k2mm_qsfp0, dw=256)
+        self.comb += k2mmctrl_0.source_ctrl.connect(k2mm_qsfp0.sink_tester_ctrl)
         
-        self.trace_targets = [
-            k2mm.source_packet_tx,
-            k2mm.sink_packet_rx,
-            k2mm_ctrl.source_ctrl,
+        #
+        # Port #2
+        #
+        self.submodules.ky_qsfp1 = ky1 = KyokkoBlock(
+            platform, 
+            None,
+            None,
+            cd_freerun=None
+        )
+        self.submodules.k2mm_qsfp1 = k2mm_qsfp1 = K2MM(dw=256)
+        self.comb += [
+            ky1.source_user_rx.connect(k2mm_qsfp1.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+            k2mm_qsfp1.source_packet_tx.connect(ky1.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
         ]
+        self.submodules.k2mmctrl_1 = k2mmctrl_1 = K2MMControl(k2mm_qsfp1, dw=256)
+        self.comb += k2mmctrl_1.source_ctrl.connect(k2mm_qsfp1.sink_tester_ctrl)
         
+        # loopback
+        self.comb += [
+            kyokko.source_qsfp_tx.connect(ky1.sink_qsfp_rx, omit={"ready"}),
+            ky1.source_qsfp_tx.connect(kyokko.sink_qsfp_rx, omit={"ready"}),
+            kyokko.sink_qsfp_rx.ready.eq(1),
+            kyokko.source_qsfp_tx.ready.eq(1),
+            ky1.sink_qsfp_rx.ready.eq(1),
+            ky1.source_qsfp_tx.ready.eq(1),
+        ]
+
+        self.trace_targets += [
+            kyokko.sink_qsfp_rx,
+            kyokko.source_qsfp_tx,
+            ky1.source_qsfp_tx,
+            ky1.sink_qsfp_rx,
+        ]
+
 def generate_gtkw_savefile(builder, vns, trace_fst):
     from litex.build.sim import gtkwave as gtkw
     dumpfile = os.path.join(builder.gateware_dir, "sim.{}".format("fst" if trace_fst else "vcd"))
@@ -391,9 +460,9 @@ def main():
     soc_kwargs     = soc_core_argdict(args)
     builder_kwargs = builder_argdict(args)
 
-    sys_clk_freq = int(1e6)
     sim_config = SimConfig()
-    sim_config.add_clocker("sys_clk", freq_hz=sys_clk_freq)
+    sim_config.add_clocker("sys_clk", freq_hz=int(4e6))
+    sim_config.add_clocker("gt_sim_clk", freq_hz=int(4e6))
 
     cpu = CPUS.get(soc_kwargs.get("cpu_type", "vexriscv"))
 
@@ -464,9 +533,17 @@ def main():
     # Build/Run ------------------------------------------------------------------------------------
     def pre_run_callback(vns):
         generate_gtkw_savefile(builder, vns, args.trace_fst)
-
+    
     builder_kwargs["csr_csv"] = "csr.csv"
     builder = Builder(soc, **builder_kwargs)
+    from cores.tf.framing import K2MM
+    k2mm = K2MM(dw=256)
+    from migen.fhdl.verilog import convert
+    _ios = []
+    for ep in k2mm.get_ios():
+        _ios += ep.flatten()
+    verilog_filename = os.path.join("build", "sim", "gateware", "k2mm.v")
+    convert(k2mm, ios=set(_ios), name="k2mm").write(verilog_filename)
     builder.build(
         threads          = args.threads,
         sim_config       = sim_config,

@@ -112,7 +112,14 @@ class KyokkoBlock(Module, AutoCSR):
         self.platform = platform
         self.sink_user_tx = stream.Endpoint(_dp_layout)
         self.source_user_rx = stream.Endpoint(_dp_layout)
-        self.clock_domains.cd_datapath = ClockDomain()
+        self.clock_domains.cd_datapath = cd_datapath = ClockDomain()
+        dp_por = Signal(reset=1)
+        self.sync.datapath += [
+            dp_por.eq(0)
+        ]
+        self.comb += [
+            cd_datapath.rst.eq(dp_por)
+        ]
         
         # CDC
         self.submodules.cdc_tx = cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(
@@ -167,13 +174,14 @@ class KyokkoBlock(Module, AutoCSR):
         )
 
     def do_finalize(self):
-        self.platform.add_platform_command("""
+        self.specials += Instance("kyokko_gty4", **self.core_params, name="kyokko_gty4_i")
+
+    @staticmethod
+    def add_common_timing_constraints(platform):
+        platform.add_platform_command("""
 set_false_path -from [get_pins -match_style ucf */tx/init/RX_STAT_TX_reg[*]/C]
 set_false_path -from [get_pins -match_style ucf */rxinit/LINK_ERR_TIMER_reg[*]/C]
 set_false_path -from [get_pins -match_style ucf */rxinit/RXSLIP_LIMIT_reg/C] -to [get_pins -match_style ucf */rxrst/RXSLIP_LIMITi_reg/D]
 set_false_path -to [get_pins -match_style ucf */RXRST100i_reg/*]""")
-        self.specials += Instance("kyokko_gty4", **self.core_params, name="kyokko_gty4_i")
-    
-    def add_timing_constraints(self, platform, padgroup_name):
-        pass
+
     

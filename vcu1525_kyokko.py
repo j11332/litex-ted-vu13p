@@ -24,6 +24,7 @@ from cores.kyokko.kyokko import KyokkoBlock
 from cores.tf.framing import K2MMBlock
 from litex.soc.cores.clock.common import *
 from litex.soc.cores.clock.xilinx_common import *
+
 class _CRG(Module):
     def __init__(self, platform : Platform, sys_clk_freq):
         self.rst = Signal()
@@ -45,19 +46,18 @@ class _CRG(Module):
         self.comb += pll.reset.eq(self.rst)
         
         self.specials += [
-            Instance("BUFGCE_DIV", name="main_bufgce_div",
+            Instance("BUFGCE_DIV", name="buf_pll4x",
                 p_BUFGCE_DIVIDE=4,
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys.clk),
-            Instance("BUFGCE_DIV", name="crg_buf_clk100",
+            Instance("BUFGCE_DIV", name="buf_clk100",
                 p_BUFGCE_DIVIDE=6,
                 i_CE=1, i_I=self.cd_idelay.clk, o_O=self.cd_clk100.clk),
             AsyncResetSynchronizer(self.cd_clk100, self.cd_sys.rst),
-            Instance("BUFGCE", name="main_bufgce",
+            Instance("BUFGCE", name="buf_sys",
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys4x.clk),
         ]
 
-        self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
-        
+        self.submodules+= USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
 class BaseSoC(SoCCore):
     def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
@@ -66,6 +66,7 @@ class BaseSoC(SoCCore):
         SoCCore.__init__(self, platform, sys_clk_freq,
             ident          = "LiteX SoC on tfoil",
             ident_version  = True,
+            cpu_type       = "vexriscv",
             **kwargs)
 
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -92,6 +93,10 @@ class BaseSoC(SoCCore):
         self._add_kyokko(platform)
 
     def _add_kyokko(self, platform):
+        from cores.tf.framing import K2MMControl
+        #
+        # Port #1
+        #
         self.submodules.kyokko = kyokko = KyokkoBlock(
             platform, 
             platform.request("qsfp", 0),
@@ -103,7 +108,12 @@ class BaseSoC(SoCCore):
             kyokko.source_user_rx.connect(k2mm.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
             k2mm.source_packet_tx.connect(kyokko.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
         ]
-
+        self.submodules.k2mmctrl_0 = k2mmctrl_0 = K2MMControl(k2mm, dw=256)
+        self.comb += k2mmctrl_0.source_ctrl.connect(k2mm.sink_tester_ctrl)
+        
+        #
+        # Port #2
+        #
         self.submodules.ky_qsfp1 = ky1 = KyokkoBlock(
             platform, 
             platform.request("qsfp", 1),
@@ -115,7 +125,10 @@ class BaseSoC(SoCCore):
             ky1.source_user_rx.connect(k2mm_qsfp1.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
             k2mm_qsfp1.source_packet_tx.connect(ky1.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
         ]
-        
+        self.submodules.k2mmctrl_1 = k2mmctrl_1 = K2MMControl(k2mm_qsfp1, dw=256)
+        self.comb += k2mmctrl_1.source_ctrl.connect(k2mm_qsfp1.sink_tester_ctrl)
+        KyokkoBlock.add_common_timing_constraints(platform)
+
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")

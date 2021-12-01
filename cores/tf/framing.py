@@ -171,11 +171,11 @@ class _K2MMPacketParser(Module):
         
         # TX/RX packet
         ptx = K2MMPacketTX(dw=dw)
-        ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
+#        ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
         self.submodules.ptx = ptx
 
         prx = K2MMPacketRX(dw=dw)
-        prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
+#        prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
         self.submodules.prx = prx
         
         self.sink, self.source = ptx.sink, prx.source
