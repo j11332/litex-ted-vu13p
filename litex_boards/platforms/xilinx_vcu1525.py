@@ -6,7 +6,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import json
-from litex.build.generic_platform import Pins, Subsignal, IOStandard, Misc
+from litex.build.generic_platform import Pins, PlatformInfo, Subsignal, IOStandard, Misc
 from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
 import os.path
 
@@ -22,17 +22,27 @@ _io = [
         Subsignal("rx_p", Pins("n4 m2 l4 k2")),
         Subsignal("tx_n", Pins("n8 m6 l8 k6")),
         Subsignal("tx_p", Pins("n9 m7 l9 k7")),
+        PlatformInfo({"quad" : "Quad_X1Y12", "channel" : ("X1Y48", "X1Y49", "X1Y50", "X1Y51")}),
     ),
     ("qsfp", 1,
         Subsignal("rx_n", Pins("U3 T1 R3 P1")),
         Subsignal("rx_p", Pins("U4 T2 R4 P2")),
         Subsignal("tx_n", Pins("U8 T6 R8 P6")),
         Subsignal("tx_p", Pins("U9 T7 R9 P7")),
+        PlatformInfo({"quad" : "Quad_X1Y11", "channel" : ("X1Y44", "X1Y45", "X1Y46", "X1Y47")}),
     ),
     _diff_clk("qsfp0_refclk156m", 0, "m10", "m11"),
     _diff_clk("qsfp0_refclk161m", 0, "k10", "k11"),
     _diff_clk("qsfp1_refclk156m", 0, "T10", "T11"),
     _diff_clk("qsfp1_refclk161m", 0, "P10", "P11"),
+    ("qsfp0_fs", 0,
+        Subsignal("fs", Pins("AT20 AU22"), IOStandard("LVCMOS12")),
+        Subsignal("rst", Pins("AT22"), IOStandard("LVCMOS12"))
+    ),
+    ("qsfp1_fs", 0,
+        Subsignal("fs", Pins("AR22 AU20"), IOStandard("LVCMOS12")),
+        Subsignal("rst", Pins("AR21"), IOStandard("LVCMOS12")),
+    ),
     # Clk / Rst
     ("sys_clk", 0,
         Subsignal("n", Pins("AY38"), IOStandard("DIFF_SSTL12")),
@@ -282,71 +292,19 @@ _io = [
 ]
 
 _connectors = []
-_gty4_params = {
-    "CONFIG.CHANNEL_ENABLE"          : "X0Y31 X0Y30 X0Y29 X0Y28",
-    "CONFIG.DISABLE_LOC_XDC"         : "1",
-    "CONFIG.FREERUN_FREQUENCY"       : "100",
-    "CONFIG.INTERNAL_PRESET"         : "Aurora_64B66B",
-    "CONFIG.LOCATE_RX_USER_CLOCKING" : "CORE",
-    "CONFIG.LOCATE_TX_USER_CLOCKING" : "CORE",
-    "CONFIG.PRESET"                  : "GTY-Aurora_64B66B",
-    "CONFIG.RX_CB_MAX_LEVEL"         : "2",
-    "CONFIG.RX_DATA_DECODING"        : "64B66B_ASYNC",
-    "CONFIG.RX_INT_DATA_WIDTH"       : "64",
-    "CONFIG.RX_JTOL_FC"              : "10",
-    "CONFIG.RX_LINE_RATE"            : "25.78125",
-    "CONFIG.RX_MASTER_CHANNEL"       : "X0Y28",
-    "CONFIG.RX_OUTCLK_SOURCE"        : "RXPROGDIVCLK",
-    "CONFIG.RX_REFCLK_FREQUENCY"     : "161.1328125",
-    "CONFIG.RX_REFCLK_SOURCE"        : "",
-    "CONFIG.RX_USER_DATA_WIDTH"      : "64",
-    "CONFIG.TXPROGDIV_FREQ_VAL"      : "390.625",
-    "CONFIG.TX_DATA_ENCODING"        : "64B66B_ASYNC",
-    "CONFIG.TX_INT_DATA_WIDTH"       : "64",
-    "CONFIG.TX_LINE_RATE"            : "25.78125",
-    "CONFIG.TX_MASTER_CHANNEL"       : "X0Y28",
-    "CONFIG.TX_OUTCLK_SOURCE"        : "TXPROGDIVCLK",
-    "CONFIG.TX_REFCLK_FREQUENCY"     : "161.1328125",
-    "CONFIG.TX_USER_DATA_WIDTH"      : "64",
-}
+
 class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
     part = "xcvu9p-fsgd2104-2l-e"
 
-    def add_tcl_ip(self, ipdef, name, config):
-        self.toolchain.pre_synthesis_commands += [
-            "create_ip "
-            f"-vlnv {ipdef}:* "
-            f"-module_name {name}"
-        ]
-        
-        ip_params_json = json.dumps(config)
-        self.toolchain.pre_synthesis_commands += [
-            "set_property -quiet "
-            "-dict [bd::json2dict {{"
-            f"{{{ip_params_json}}}"
-            "}}] "
-            f"[get_ips {name}]"
-        ]
-        
-        self.toolchain.pre_synthesis_commands += [
-            f"generate_target all [get_ips {name}]",
-            "catch {{" f"config_ip_cache -export [get_ips -all {name}]" "}}",
-            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {name}]]] -no_script -sync -force -quiet",
-            "launch_runs -jobs 10 ["
-                f"set {name}_run [create_ip_run -force [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {name}]]]]"
-            "]",
-            f"wait_on_run ${name}_run"
-        ]
-    
-    def add_ip_gty4(self):
-        self.add_tcl_ip("xilinx.com:ip:gtwizard_ultrascale", "gty4", _gty4_params)
-
     def __init__(self):
         XilinxPlatform.__init__(self, self.part, _io, _connectors, toolchain="vivado")
-        self.set_ip_cache_dir("/home/e2/tmp/ip_cache")
-        
+        self.set_ip_cache_dir("./tmp/ip_cache")
+        import util.xilinx_ila
+        self.ila = util.xilinx_ila.XilinxILATracer(self)
+        self.tcl_ip_vars = []
+                
     def create_programmer(self):
         return VivadoProgrammer()
 
@@ -400,3 +358,36 @@ class Platform(XilinxPlatform):
             self.add_period_constraint(
                 self.lookup_request(f"qsfp{i}_refclk161m", 0, loose=True),
                 1e9/161.1328125e6)
+
+    def add_tcl_ip(self, ipdef, name, config):
+        self.toolchain.pre_synthesis_commands += [
+            "create_ip "
+            f"-vlnv {ipdef}:* "
+            f"-module_name {name}"
+        ]
+        
+        ip_params_json = json.dumps(config)
+        self.toolchain.pre_synthesis_commands += [
+            "set_property -quiet "
+            "-dict [bd::json2dict {{"
+            f"{{{ip_params_json}}}"
+            "}}] "
+            f"[get_ips {name}]"
+        ]
+        
+        self.toolchain.pre_synthesis_commands += [
+            f"generate_target all [get_ips {name}]",
+            "catch {{" f"config_ip_cache -export [get_ips -all {name}]" "}}",
+            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {name}]]] -no_script -sync -force -quiet",
+            f"set {name}_run [create_ip_run -force [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {name}]]]]"
+        ]
+        self.tcl_ip_vars += [name]
+
+    def finalize_tcl_ip(self):
+        tcl_runs = " ".join([f"${name}_run" for name in self.tcl_ip_vars])
+        self.toolchain.pre_synthesis_commands += [
+            "launch_runs -jobs 10 " f"{tcl_runs}",
+            f"foreach run [list " f"{tcl_runs}]" " {{",
+            "    wait_on_run $run",
+            "}}"
+        ]

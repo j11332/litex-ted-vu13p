@@ -110,11 +110,13 @@ class K2MMPacketRX(Module):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
+            depacketizer.source.ready.eq(1),
             If(depacketizer.source.valid,
-                NextState("DROP"),
                 If(depacketizer.source.magic == K2MMPacket.magic,
                     NextState("RECEIVE")
-                )
+                ).Else(
+                    NextState("DROP"),
+                ),
             )
         )
         self.comb += [
@@ -171,31 +173,16 @@ class _K2MMPacketParser(Module):
         
         # TX/RX packet
         ptx = K2MMPacketTX(dw=dw)
-#        ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
+        ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
         self.submodules.ptx = ptx
 
         prx = K2MMPacketRX(dw=dw)
-#        prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
+        prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
         self.submodules.prx = prx
         
         self.sink, self.source = ptx.sink, prx.source
-        from cores.xpm_fifo import XPMStreamFIFO
-        if bufferrized:
-            self.submodules.tx_buffer = tx_buffer = SyncFIFO(ptx.source.description, depth=fifo_depth, buffered=True)
-            self.submodules.rx_buffer = rx_buffer = SyncFIFO(prx.sink.description, depth=fifo_depth, buffered=True)
-            self.comb += [
-                ptx.source.connect(tx_buffer.sink),
-                rx_buffer.source.connect(prx.sink)
-            ]
-            self.source_packet_tx = Endpoint(tx_buffer.source.description)
-            self.sink_packet_rx = Endpoint(rx_buffer.sink.description)
-            self.comb += [
-                self.sink_packet_rx.connect(rx_buffer.sink),
-                tx_buffer.source.connect(self.source_packet_tx)
-            ]
-        else:
-            self.source_packet_tx = ptx.source
-            self.sink_packet_rx = prx.sink
+        self.source_packet_tx = ptx.source
+        self.sink_packet_rx = prx.sink
 
 class _K2MMTester(Module):
     def __init__(self, dw=32, max_latency=65536):
@@ -203,8 +190,9 @@ class _K2MMTester(Module):
         self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
         
         # # #
-
-        self.submodules.tfg = tfg = TestFrameGenerator(data_width=dw)
+        from util.epbuf import InsertSkidBuffer
+        from litex.soc.interconnect.stream import DIR_SOURCE
+        self.submodules.tfg = tfg = InsertSkidBuffer({"source": DIR_SOURCE})(TestFrameGenerator(data_width=dw))
         self.sink_ctrl = Endpoint(tfg.sink_ctrl.description)
 
         self.submodules.tfc = tfc = TestFrameChecker(dw=dw)

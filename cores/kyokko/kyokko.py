@@ -113,24 +113,20 @@ class KyokkoBlock(Module, AutoCSR):
         self.sink_user_tx = stream.Endpoint(_dp_layout)
         self.source_user_rx = stream.Endpoint(_dp_layout)
         self.clock_domains.cd_datapath = cd_datapath = ClockDomain()
-        dp_por = Signal(reset=1)
-        self.sync.datapath += [
-            dp_por.eq(0)
-        ]
-        self.comb += [
-            cd_datapath.rst.eq(dp_por)
-        ]
+        self.init_clk_locked = init_clk_locked = Signal()
         
+        channel_up = Signal()
+        self.comb += cd_datapath.rst.eq(~channel_up)
         # CDC
         self.submodules.cdc_tx = cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(
-            XPMAsyncStreamFIFO(self.sink_user_tx.description, depth=128, buffered=True, sync_stages=4))
+            XPMAsyncStreamFIFO(self.sink_user_tx.description, depth=128, buffered=True, sync_stages=4, reset="source"))
         
         self.submodules.cdc_rx = cdc_rx = ClockDomainsRenamer({"write" : "datapath", "read" : cd})(
             XPMAsyncStreamFIFO(self.source_user_rx.description, depth=128, buffered=True, sync_stages=4))
 
         self.comb += [
             self.sink_user_tx.connect(cdc_tx.sink),
-            cdc_rx.source.connect(self.source_user_rx)
+            cdc_rx.source.connect(self.source_user_rx),
         ]
         
         self._reset = CSRStorage(fields=[
@@ -142,19 +138,37 @@ class KyokkoBlock(Module, AutoCSR):
         ])
 
         # Status Register
-        channel_up = Signal()
         self.specials += MultiReg(channel_up, self._status.fields.channel_up, odomain=cd, n=2)
         
         lane_up = Signal(lanes)
         self.specials += MultiReg(lane_up, self._status.fields.lane_up, odomain=cd, n=2)
-                
+        import util.xilinx_ila
+        for ep in [cdc_tx.source, cdc_rx.sink]:
+            for s in [ep.valid, ep.ready, ep.last]:
+                platform.ila.add_probe(s, cd_datapath.clk, trigger=True)
+            for s in ep.payload.flatten():
+                platform.ila.add_probe(s, cd_datapath.clk, trigger=False)
+        
+        # clock buffer
+        if isinstance(refclk, Record):
+            self.gt_refclk = Signal()
+            self.specials += Instance(
+                    "IBUFDS_GTE4",
+                    name="gtref_b",
+                    i_I = refclk.p,
+                    i_IB = refclk.n,
+                    i_CEB = 0b0,
+                    o_O = self.gt_refclk)
+        else:
+            self.gt_refclk = refclk
+
         self.core_params = dict(
             i_clk         = ClockSignal(cd_freerun),
             i_reset       = self._reset.fields.reset_pb,
             o_channel_up  = channel_up,
             o_lane_up     = lane_up,
             o_user_clk    = ClockSignal(cd="datapath"),
-            
+            i_init_clk_locked = init_clk_locked,
             # User data TX/RX
             i_s_axis_tx_tdata   = cdc_tx.source.data,
             i_s_axis_tx_tlast   = cdc_tx.source.last,
@@ -169,12 +183,14 @@ class KyokkoBlock(Module, AutoCSR):
             i_gtyrxp            = pads.rx_p,
             o_gtytxn            = pads.tx_n,
             o_gtytxp            = pads.tx_p,
-            i_gt_refclk_clk_p   = refclk.clk_p if hasattr(refclk, "clk_p") else refclk.p,
-            i_gt_refclk_clk_n   = refclk.clk_n if hasattr(refclk, "clk_n") else refclk.n,
+            i_gt_refclk     = self.gt_refclk,
         )
 
     def do_finalize(self):
         self.specials += Instance("kyokko_gty4", **self.core_params, name="kyokko_gty4_i")
+
+    def get_refclk(self):
+        return self.gt_refclk
 
     @staticmethod
     def add_common_timing_constraints(platform):
