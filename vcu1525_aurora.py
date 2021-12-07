@@ -19,12 +19,10 @@ from litedram.modules import MTA18ASF2G72PZ
 from litedram.phy import usddrphy
 from localbuilder import LocalBuilder
 
-from cores.kyokko.phy.phy_usp_gty import USPGTY4
-from cores.kyokko.kyokko import KyokkoBlock
-from cores.tf.framing import K2MMBlock
 from litex.soc.cores.clock.common import *
 from litex.soc.cores.clock.xilinx_common import *
 
+from cores.kyokko.aurora import Aurora64b66b
 class _MMCMReset(Module):
     def __init__(self, cd="sys"):
         self.clock_domains.cd_cfgmclk = cd_cfgmclk = ClockDomain()
@@ -156,15 +154,15 @@ class BaseSoC(SoCCore):
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
         
-        self._add_kyokko(platform)
+        self._add_aurora(platform)
+        self.platform.finalize_tcl_ip()
 
-    def _add_kyokko(self, platform):
+    def _add_aurora(self, platform):
         from cores.tf.framing import K2MMControl, K2MM
-        #
+        from cores.kyokko.aurora import Aurora64b66b
         # Port #1
-        #
-        self.submodules.ky_0 = kyokko = KyokkoBlock(
-            platform, 
+        self.submodules.ky_0 = kyokko = Aurora64b66b(
+            platform,
             platform.request("qsfp", 0),
             platform.request("qsfp0_refclk161m"),
             cd_freerun="clk100"
@@ -177,14 +175,11 @@ class BaseSoC(SoCCore):
         ]
         self.submodules.k2mmctrl_0 = k2mmctrl_0 = K2MMControl(k2mm, dw=256)
         self.comb += k2mmctrl_0.source_ctrl.connect(k2mm.sink_tester_ctrl)
-        
-        #
-        # Port #2
-        #
-        self.submodules.ky_1 = ky1 = KyokkoBlock(
+
+        self.submodules.ky_1 = ky1 = Aurora64b66b(
             platform, 
             platform.request("qsfp", 1),
-            kyokko.get_refclk(),
+            kyokko.gt_refclk,
             cd_freerun="clk100"
         )
         self.submodules.k2mm_1 = k2mm_1 = K2MM(dw=256)
@@ -195,7 +190,6 @@ class BaseSoC(SoCCore):
         ]
         self.submodules.k2mmctrl_1 = k2mmctrl_1 = K2MMControl(k2mm_1, dw=256)
         self.comb += k2mmctrl_1.source_ctrl.connect(k2mm_1.sink_tester_ctrl)
-        KyokkoBlock.add_common_timing_constraints(platform)
 
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
@@ -214,9 +208,10 @@ def main():
     )
 
     builder = LocalBuilder(soc, **builder_argdict(args))
+
     from litex.build import tools
-    tools.write_to_file(os.path.join(builder.gateware_dir, "gen_ila.tcl"), "\n".join(soc.platform.ila.generate_ila()))
     vns = builder.build(run=args.build)
+    soc.platform.ila.generate_ila(builder.gateware_dir)
 
     if args.load:
         prog = soc.platform.create_programmer()

@@ -47,6 +47,10 @@ class TestFrameGenerator(Module):
         self.sink_ctrl = sink_ctrl = stream.Endpoint(
             self.getControlInterfaceDescriptor(maxlen=maxlen)
         )
+        
+        self.go = Signal()
+        self.length = Signal(max=maxlen)
+
         self.source = source = stream.Endpoint(
             K2MMPacket.packet_user_description(dw=data_width))
 
@@ -59,15 +63,23 @@ class TestFrameGenerator(Module):
         self.busy = busy = Signal()
         self.sync += busy.eq(sink_ctrl.valid | (sink_ctrl.ready == 0))
         
+        # Transition detection
+        _go = Signal.like(self.go)
+        _single_start = Signal()
+        self.sync += _go.eq(self.go)
+        self.comb += _single_start.eq(self.go & ~_go)
+
         fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             sink_ctrl.ready.eq(1),
-            If(sink_ctrl.valid,
+            If(sink_ctrl.valid | _single_start,
                 NextState("RUN"),
                 NextValue(length, sink_ctrl.length),
                 NextValue(beats, 0),
             )
         )
+        _last_sending = Signal()
+        self.comb += _last_sending.eq(beats == length)
         fsm.act("RUN",
             sink_ctrl.ready.eq(0),
             source.data.eq(Replicate(beats, data_width//len(beats))),
@@ -75,25 +87,16 @@ class TestFrameGenerator(Module):
             source.pf.eq(1),
             source.valid.eq(1),
             source.first.eq(beats == 0),
+            source.last.eq(_last_sending),
+            source.last_be.eq(Replicate(_last_sending, data_width//8)),
             If(source.ready == 1,
-                If(beats == length,
+                If(_last_sending,
                     NextState("IDLE"),
                 ).Else(
                     NextValue(beats, beats + 1)
                 )
             ),
-            If(beats == length,
-                source.last.eq(1),
-                source.last_be.eq(Replicate(C(1), data_width//8)),
-            ).Else(
-                source.last.eq(0),
-                source.last_be.eq(0),
-            ),
         )
-        # fsm.act("DONE",
-        #     sink_ctrl.ready.eq(0),
-        #     source.valid.eq(0),
-        #     NextState("IDLE")
-        # )
+
         self.submodules += fsm
 
