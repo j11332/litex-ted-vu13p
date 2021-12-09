@@ -124,7 +124,7 @@ class Aurora64b66b(Module, AutoCSR):
             "CONFIG.C_GT_LOC_4"          : "4",
             "CONFIG.C_GT_LOC_3"          : "3",
             "CONFIG.C_GT_LOC_2"          : "2",
-            "CONFIG.drp_mode"            : "AXI4_LITE",
+            "CONFIG.drp_mode"            : "Native",
             "CONFIG.SupportLevel"        : "1",
             "CONFIG.C_USE_BYTESWAP"      : "true",
             "CONFIG.C_GTWIZ_OUT"         : "false",
@@ -220,19 +220,14 @@ class Aurora64b66b(Module, AutoCSR):
             o_sync_clk_out                = Signal(),
         )
 
-        _drp_suffix_lanes = ["", "_lane1", "_lane2", "_lane3"]
-        for _suffix in _drp_suffix_lanes:
+        for _n in range(0, LANES):
             self.ip_params.update({
-                "i_s_axi_awaddr" + _suffix  : 0,
-                "i_s_axi_wstrb" + _suffix   : 0,
-                "i_s_axi_wdata" + _suffix   : 0,
-                "i_s_axi_araddr" + _suffix  : 0,
-                "o_s_axi_rdata" + _suffix   : 0,
-                "i_s_axi_bready" + _suffix  : 0,
-                "i_s_axi_awvalid" + _suffix : 0,
-                "i_s_axi_wvalid" + _suffix  : 0,
-                "i_s_axi_arvalid" + _suffix : 0,
-                "i_s_axi_rready" + _suffix  : 0,
+                f"i_gt{_n}_drpaddr"  : 0,
+                f"i_gt{_n}_drpdi"    : Replicate(0b0, 10),
+                f"o_gt{_n}_drpdo"    : Signal(16),
+                f"i_gt{_n}_drpen"    : 0,
+                f"o_gt{_n}_drprdy"   : Signal(),
+                f"i_gt{_n}_drpwe"    : 0,
             })
         
         self.specials += Instance(
