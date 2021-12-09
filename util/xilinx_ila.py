@@ -15,6 +15,10 @@ class XilinxILATracer:
             "add_files -fileset constrs_1 -norecurse gen_ila.tcl"
         ]
 
+        platform.toolchain.additional_commands += [
+            "write_debug_probe -force {build_name}.ltx"
+        ]
+
     def add_probe(self, sig, clock, trigger=False):
         if self.cores.get(clock.duid) is None:
             clock.attr.add(('ILA_CLOCK_DUID', str(clock.duid)))

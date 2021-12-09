@@ -215,7 +215,7 @@ def main():
 
     builder = LocalBuilder(soc, **builder_argdict(args))
     from litex.build import tools
-    tools.write_to_file(os.path.join(builder.gateware_dir, "gen_ila.tcl"), "\n".join(soc.platform.ila.generate_ila()))
+    soc.platform.ila.generate_ila(builder.gateware_dir)
     vns = builder.build(run=args.build)
 
     if args.load:

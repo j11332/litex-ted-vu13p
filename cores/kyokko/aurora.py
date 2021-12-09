@@ -86,7 +86,8 @@ class Aurora64b66b(Module, AutoCSR):
         self, platform, 
         pads, refclk,
         cd_freerun = "clk100",
-        freerun_clk_freq = int(100e6)):
+        freerun_clk_freq = int(100e6),
+        with_ila = True):
         LANES=4        
         self.init_clk_locked = Signal()
         self.sink_user_tx = sink_user_tx = Endpoint(kyokkoStreamDesc(lanes=LANES))
@@ -101,15 +102,22 @@ class Aurora64b66b(Module, AutoCSR):
         rg = ClockDomainsRenamer(cd_freerun)(
             _ResetSequencer(pma_wait=50, reset_width = freerun_clk_freq))
             
-        self.submodules.rg = rg
-        self.comb += [
-            self.reset_pb.eq(rg.reset_pb),
-            self.pma_init.eq(rg.pma_init)
-        ]
+        import os.path
+        srcdir = os.path.dirname(__file__)
+        platform.add_sources(srcdir, "aurora_reset_seq.v")
+        _vio_reset = Signal()
+        _reset_seq_done = Signal()
+        self.specials += Instance(
+            "aurora_reset_seq", 
+            i_init_clk = ClockSignal("clk100"),
+            i_init_clk_locked = self.init_clk_locked,
+            i_ext_reset_in = _vio_reset,
+            i_are_sys_reset_in = cd_dp.rst,
+            o_done = _reset_seq_done,
+            o_are_reset_pb_out = self.reset_pb,
+            o_are_pma_init_out = self.pma_init,
+        )
         
-        self.add_reset(~self.init_clk_locked, edge=True)
-        self.add_reset(ResetSignal(cd_freerun), edge=False)
-
         ip_vlnv = "xilinx.com:ip:aurora_64b66b"
         self.refname = "ar_" + pads.platform_info['quad']
         self.ip_cfg = {
@@ -120,7 +128,7 @@ class Aurora64b66b(Module, AutoCSR):
             "CONFIG.C_REFCLK_FREQUENCY"  : "161.1328125",
             "CONFIG.C_INIT_CLK"          : freerun_clk_freq // 1000000,
             "CONFIG.flow_mode"           : "None",
-            "CONFIG.SINGLEEND_GTREFCLK"  : "true",
+            "CONFIG.SINGLEEND_GTREFCLK"  : "false" if isinstance(refclk, Record) else "true",
             "CONFIG.C_GT_LOC_4"          : "4",
             "CONFIG.C_GT_LOC_3"          : "3",
             "CONFIG.C_GT_LOC_2"          : "2",
@@ -134,19 +142,16 @@ class Aurora64b66b(Module, AutoCSR):
         
         # clock buffer
         if isinstance(refclk, Record):
-            self.gt_refclk = Signal()
-            self.specials += Instance(
-                    "IBUFDS_GTE4",
-                    name="gtref_b",
-                    i_I = refclk.p,
-                    i_IB = refclk.n,
-                    i_CEB = 0b0,
-                    o_O = self.gt_refclk)
+            self.ip_params = dict(
+                i_gt_refclk1_n = refclk.n,
+                i_gt_refclk1_p = refclk.p
+            )
         else:
-            self.gt_refclk = refclk
-        
-        self.ip_params = dict(
-            i_refclk1_in = self.gt_refclk,
+            self.ip_params = dict(
+                i_refclk_in = refclk
+            )
+
+        self.ip_params.update(
             i_init_clk   = ClockSignal(cd_freerun),
             i_reset_pb   = self.reset_pb,
             i_power_down = 0b0,
@@ -173,12 +178,13 @@ class Aurora64b66b(Module, AutoCSR):
         self.comb += cdc_rx.source.connect(self.source_user_rx)
         self.submodules.cdc_rx = cdc_rx
         
-        import util.xilinx_ila
-        for ep in [cdc_tx.source, cdc_rx.sink]:
-            for s in [ep.valid, ep.ready, ep.last]:
-                platform.ila.add_probe(s, cd_dp.clk, trigger=True)
-            for s in ep.payload.flatten():
-                platform.ila.add_probe(s, cd_dp.clk, trigger=False)
+        if with_ila:
+            import util.xilinx_ila
+            for ep in [cdc_tx.source, cdc_rx.sink]:
+                for s in [ep.valid, ep.ready, ep.last]:
+                    platform.ila.add_probe(s, cd_dp.clk, trigger=True)
+                for s in ep.payload.flatten():
+                    platform.ila.add_probe(s, cd_dp.clk, trigger=False)
 
         self._status = CSRStatus(fields=[
             CSRField("reset_pb", size=1),
@@ -192,7 +198,6 @@ class Aurora64b66b(Module, AutoCSR):
         self.specials += MultiReg(self.pma_init, self._status.fields.pma_init, odomain="sys", n=2)
         self.specials += MultiReg(mmcm_not_locked, self._status.fields.mmcm_not_locked, odomain="sys", n=2)
 
-
         self.ip_params.update(
             i_s_axi_tx_tdata    = cdc_tx.source.data,
             i_s_axi_tx_tkeep    = Replicate(0b1, len(cdc_tx.source.data)//8),
@@ -205,12 +210,18 @@ class Aurora64b66b(Module, AutoCSR):
             o_m_axi_rx_tvalid   = self.cdc_rx.sink.valid,
         )
 
+        lane_up                     = Signal(LANES)
+        channel_up                  = Signal()
+        hard_err                    = Signal()
+        soft_err                    = Signal()
         # Status Output
+        _gt_qpllrefclklost_quad1_out = Signal()
+        _gt_qplllock_quad1_out = Signal()
         self.ip_params.update(
             o_gt_qpllclk_quad1_out        = Signal(),
             o_gt_qpllrefclk_quad1_out     = Signal(),
-            o_gt_qpllrefclklost_quad1_out = Signal(),
-            o_gt_qplllock_quad1_out       = Signal(),
+            o_gt_qpllrefclklost_quad1_out = _gt_qpllrefclklost_quad1_out,
+            o_gt_qplllock_quad1_out       = _gt_qplllock_quad1_out,
             o_gt_reset_out                = Signal(),
             o_gt_powergood                = Signal(),
             o_mmcm_not_locked_out         = mmcm_not_locked,
@@ -218,7 +229,23 @@ class Aurora64b66b(Module, AutoCSR):
             o_user_clk_out                = cd_dp.clk,
             o_link_reset_out              = Signal(),
             o_sync_clk_out                = Signal(),
+            o_lane_up                     = lane_up,
+            o_channel_up                  = channel_up,
+            o_hard_err                    = hard_err,
+            o_soft_err                    = soft_err,
         )
+        from util.xilinx_vio import XilinxVIO
+        self.submodules.vio = vio = XilinxVIO(platform)
+        vio.add_input_probe(lane_up)
+        vio.add_input_probe(channel_up)
+        vio.add_input_probe(hard_err)
+        vio.add_input_probe(soft_err)
+        vio.add_input_probe(self.pma_init)
+        vio.add_input_probe(self.reset_pb)
+        vio.add_input_probe(_reset_seq_done)
+        vio.add_input_probe(_gt_qpllrefclklost_quad1_out)
+        vio.add_input_probe(_gt_qplllock_quad1_out)
+        vio.add_output_probe(_vio_reset)
 
         for _n in range(0, LANES):
             self.ip_params.update({
@@ -234,9 +261,5 @@ class Aurora64b66b(Module, AutoCSR):
             self.refname,
             name=self.refname + "_i",
             **self.ip_params)
-        
-    def add_reset(self, sig, edge = False, sync=True):
-        if sync is not True:
-            NotImplementedError()
-        self.rg.add_reset(sig, edge = edge)
+
 
