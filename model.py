@@ -40,10 +40,12 @@ class KyokkoBlock(Module, AutoCSR):
         # CDC
         cdc_tx = ClockDomainsRenamer({"write" : cd, "read" : "datapath"})(
             stream.AsyncFIFO(kyokkoStreamDesc(lanes=lanes), 128, buffered=True))
+        self.submodules += cdc_tx
         
         cdc_rx = ClockDomainsRenamer({"write" : "datapath", "read" : cd})(
             stream.AsyncFIFO(kyokkoStreamDesc(lanes=lanes), 128, buffered=True))
-
+        self.submodules += cdc_rx
+        
         self.comb += [
             self.sink_user_tx.connect(cdc_tx.sink),
             cdc_tx.source.connect(self.source_qsfp_tx),

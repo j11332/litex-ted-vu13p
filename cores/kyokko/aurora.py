@@ -99,21 +99,20 @@ class Aurora64b66b(Module, AutoCSR):
         # Reset sequencer
         self.reset_pb = Signal()
         self.pma_init = Signal()
-        rg = ClockDomainsRenamer(cd_freerun)(
-            _ResetSequencer(pma_wait=50, reset_width = freerun_clk_freq))
-            
+        
         import os.path
         srcdir = os.path.dirname(__file__)
-        platform.add_sources(srcdir, "aurora_reset_seq.v")
+        platform.add_sources(srcdir, "aurora_reset_seq.sv")
+        
         _vio_reset = Signal()
         _reset_seq_done = Signal()
         self.specials += Instance(
             "aurora_reset_seq", 
-            i_init_clk = ClockSignal("clk100"),
-            i_init_clk_locked = self.init_clk_locked,
-            i_ext_reset_in = _vio_reset,
+            i_init_clk         = ClockSignal(cd_freerun),
+            i_init_clk_locked  = self.init_clk_locked,
+            i_ext_reset_in     = _vio_reset,
             i_are_sys_reset_in = cd_dp.rst,
-            o_done = _reset_seq_done,
+            o_done             = _reset_seq_done,
             o_are_reset_pb_out = self.reset_pb,
             o_are_pma_init_out = self.pma_init,
         )
@@ -179,7 +178,7 @@ class Aurora64b66b(Module, AutoCSR):
         self.submodules.cdc_rx = cdc_rx
         
         if with_ila:
-            import util.xilinx_ila
+            # import util.xilinx_ila
             for ep in [cdc_tx.source, cdc_rx.sink]:
                 for s in [ep.valid, ep.ready, ep.last]:
                     platform.ila.add_probe(s, cd_dp.clk, trigger=True)

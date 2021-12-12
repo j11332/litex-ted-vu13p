@@ -1,4 +1,6 @@
 from migen import *
+from migen.genlib.cdc import MultiReg
+
 _vio_vlnv = "xilinx.com:ip:vio"
 
 class XilinxVIO(Module):
@@ -11,8 +13,15 @@ class XilinxVIO(Module):
         self.refname = f"vio_{self.instances}"
         XilinxVIO.instances += 1
         
-    def add_input_probe(self, sig):
-        self.probe_in += [sig]
+    def add_input_probe(self, sig, is_async_sig=True):
+        if is_async_sig:
+            _probe = Signal(len(sig), name=sig.backtrace[-1][0], reset_less=True)
+            cdc = MultiReg(sig, _probe, n=2)
+            self.specials += cdc
+            self.probe_in += [_probe]
+        else:
+            self.probe_in += [sig]
+        
     
     def add_output_probe(self, sig):
         self.probe_out += [sig]

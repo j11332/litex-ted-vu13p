@@ -73,7 +73,7 @@ class K2MMPacketTX(Module):
             sink.connect(packetizer.sink, omit={"src_port", "dst_port", "ip_address", "length"}),
             packetizer.sink.version.eq(K2MMPacket.version),
             packetizer.sink.magic.eq(K2MMPacket.magic),
-            packetizer.sink.addr_size.eq(dw // 8),
+            packetizer.sink.addr_size.eq(64),
             packetizer.sink.port_size.eq(dw // 8)
         ]
         
@@ -110,13 +110,11 @@ class K2MMPacketRX(Module):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            depacketizer.source.ready.eq(1),
             If(depacketizer.source.valid,
+                NextState("DROP"),
                 If(depacketizer.source.magic == K2MMPacket.magic,
                     NextState("RECEIVE")
-                ).Else(
-                    NextState("DROP"),
-                ),
+                )
             )
         )
         self.comb += [
@@ -181,8 +179,23 @@ class _K2MMPacketParser(Module):
         self.submodules.prx = prx
         
         self.sink, self.source = ptx.sink, prx.source
-        self.source_packet_tx = ptx.source
-        self.sink_packet_rx = prx.sink
+        from cores.xpm_fifo import XPMStreamFIFO
+        if bufferrized:
+            self.submodules.tx_buffer = tx_buffer = SyncFIFO(ptx.source.description, depth=fifo_depth, buffered=True)
+            self.submodules.rx_buffer = rx_buffer = SyncFIFO(prx.sink.description, depth=fifo_depth, buffered=True)
+            self.comb += [
+                ptx.source.connect(tx_buffer.sink),
+                rx_buffer.source.connect(prx.sink)
+            ]
+            self.source_packet_tx = Endpoint(tx_buffer.source.description)
+            self.sink_packet_rx = Endpoint(rx_buffer.sink.description)
+            self.comb += [
+                self.sink_packet_rx.connect(rx_buffer.sink),
+                tx_buffer.source.connect(self.source_packet_tx)
+            ]
+        else:
+            self.source_packet_tx = ptx.source
+            self.sink_packet_rx = prx.sink
 
 class _K2MMTester(Module):
     def __init__(self, dw=32, max_latency=65536):
@@ -190,9 +203,8 @@ class _K2MMTester(Module):
         self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
         
         # # #
-        from util.epbuf import InsertSkidBuffer
-        from litex.soc.interconnect.stream import DIR_SOURCE
-        self.submodules.tfg = tfg = InsertSkidBuffer({"source": DIR_SOURCE})(TestFrameGenerator(data_width=dw))
+
+        self.submodules.tfg = tfg = TestFrameGenerator(data_width=dw)
         self.sink_ctrl = Endpoint(tfg.sink_ctrl.description)
 
         self.submodules.tfc = tfc = TestFrameChecker(dw=dw)
@@ -339,9 +351,6 @@ class K2MMBlock(Module):
         import os.path
         from migen.fhdl.verilog import convert
         verilog_filename = os.path.join(self.platform.output_dir, "gateware", self.name + ".v")
-        # v = convert(self.module_class(**self.module_kwargs), name=self.name, ios=set(self.inst_param.values()))
-        # v.write(verilog_filename)
-        # self.platform.add_source(verilog_filename)
         self.specials += Instance("k2mm",
             i_sys_clk = ClockSignal(self.cd),
             i_sys_rst = ResetSignal(self.cd),

@@ -17,7 +17,7 @@ class _DUT(Module):
         ]
 
     def put_request(self, len):
-        ep = self.k2mm.tester.sink_ctrl
+        ep = self.k2mm.sink_tester_ctrl
         yield ep.length.eq(len)
         yield ep.valid.eq(1)
         yield
@@ -39,10 +39,10 @@ class _DUT(Module):
     @passive
     def print_latency(self):
         while True:
-            if ((yield self.k2mm.tester.source_status.valid) & (yield self.k2mm.tester.source_status.ready)):
+            if ((yield self.k2mm.source_tester_status.valid) & (yield self.k2mm.source_tester_status.ready)):
                 print("Frame Length: {}, Latency: {} cycle[s]".format(
-                        (yield self.k2mm.tester.source_status.length),
-                        (yield self.k2mm.tester.source_status.latency),
+                        (yield self.k2mm.source_tester_status.length),
+                        (yield self.k2mm.source_tester_status.latency),
                     )
                 )
             yield

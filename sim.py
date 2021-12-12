@@ -464,14 +464,6 @@ def main():
     
     builder_kwargs["csr_csv"] = "csr.csv"
     builder = Builder(soc, **builder_kwargs)
-    from cores.tf.framing import K2MM
-    k2mm = K2MM(dw=256)
-    from migen.fhdl.verilog import convert
-    _ios = []
-    for ep in k2mm.get_ios():
-        _ios += ep.flatten()
-    verilog_filename = os.path.join("build", "sim", "gateware", "k2mm.v")
-    convert(k2mm, ios=set(_ios), name="k2mm").write(verilog_filename)
     builder.build(
         threads          = args.threads,
         sim_config       = sim_config,
