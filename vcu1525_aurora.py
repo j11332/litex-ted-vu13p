@@ -111,16 +111,13 @@ class _CRG(Module):
         # QSFP0/1 reset |      \___________
         #               |______|_20us_
         # FPGA MMCM rst |      |      \____
-        #
         self.submodules.startup = startup = XilinxStartupReset()
-        _pads = platform.request("qsfp0_fs")
-        _pads2 = platform.request("qsfp1_fs")
-        self.comb += [
-            _pads.fs.eq(0b10),
-            _pads.rst.eq(startup.cd_cfgmclk_por.rst),
-            _pads2.fs.eq(0b10),
-            _pads2.rst.eq(startup.cd_cfgmclk_por.rst),
-        ]
+        for _pn in ["qsfp0_fs", "qsfp1_fs"]:
+            _pads = platform.request(_pn)
+            self.comb += [
+                _pads.fs.eq(0b10),
+                _pads.rst.eq(startup.cd_cfgmclk_por.rst),
+            ]
 
         platform.add_platform_command(
             "create_clock -period 20 -name cfgmclk "
@@ -204,6 +201,10 @@ class BaseSoC(SoCCore):
         ]
         self.submodules.k2mmctrl_1 = k2mmctrl_1 = K2MMControl(k2mm_1, dw=256)
         self.comb += k2mmctrl_1.source_ctrl.connect(k2mm_1.sink_tester_ctrl)
+
+        from cores.qsfp_sideband import QSFPSidebandRegister
+        self.submodules.qsfp0_ls = QSFPSidebandRegister(platform.request("qsfp_ls", 0))
+        self.submodules.qsfp1_ls = QSFPSidebandRegister(platform.request("qsfp_ls", 1))
 
     def do_finalize(self):
         self.platform.finalize_tcl_ip()

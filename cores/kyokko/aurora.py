@@ -1,3 +1,4 @@
+from cgitb import reset
 from litex.soc.interconnect.csr import AutoCSR, CSRField, CSRStatus, CSRStorage
 from migen import *
 from litex.soc.interconnect.stream import Endpoint
@@ -89,7 +90,7 @@ class Aurora64b66b(Module, AutoCSR):
         freerun_clk_freq = int(100e6),
         with_ila = True):
         LANES=4        
-        self.init_clk_locked = Signal()
+        self.init_clk_locked = Signal(reset_less=True)
         self.sink_user_tx = sink_user_tx = Endpoint(kyokkoStreamDesc(lanes=LANES))
         self.source_user_rx = source_user_rx = Endpoint(kyokkoStreamDesc(lanes=LANES))
 
@@ -104,18 +105,27 @@ class Aurora64b66b(Module, AutoCSR):
         srcdir = os.path.dirname(__file__)
         platform.add_sources(srcdir, "aurora_reset_seq.sv")
         
-        _vio_reset = Signal()
-        _reset_seq_done = Signal()
-        self.specials += Instance(
-            "aurora_reset_seq", 
-            i_init_clk         = ClockSignal(cd_freerun),
-            i_init_clk_locked  = self.init_clk_locked,
-            i_ext_reset_in     = _vio_reset,
-            i_are_sys_reset_in = cd_dp.rst,
-            o_done             = _reset_seq_done,
-            o_are_reset_pb_out = self.reset_pb,
-            o_are_pma_init_out = self.pma_init,
-        )
+        _vio_reset = Signal(reset_less=True)
+        _reset_seq_done = Signal(reset_less=True)
+        _init_clk_locked = Signal(reset_less=True)
+        _are_sys_reset_synced = Signal(reset_less=True)
+
+        from cores.xpm_fifo import XPMMultiReg
+        self.specials += [
+            XPMMultiReg(self.init_clk_locked, _init_clk_locked, odomain=cd_freerun, n=8, reset=0),
+            XPMMultiReg(cd_dp.rst, _are_sys_reset_synced, odomain=cd_freerun, n=8, reset=0),
+            Instance(
+                "aurora_reset_seq", 
+                p_INSERT_CDC       = 0b0,
+                i_init_clk         = ClockSignal(cd_freerun),
+                i_init_clk_locked  = _init_clk_locked,
+                i_ext_reset_in     = _vio_reset,
+                i_are_sys_reset_in = _are_sys_reset_synced,
+                o_done             = _reset_seq_done,
+                o_are_reset_pb_out = self.reset_pb,
+                o_are_pma_init_out = self.pma_init,
+            )
+        ]
         
         ip_vlnv = "xilinx.com:ip:aurora_64b66b"
         self.refname = "ar_" + pads.platform_info['quad']
@@ -193,9 +203,10 @@ class Aurora64b66b(Module, AutoCSR):
 
         # Status Register
         mmcm_not_locked = Signal()
-        self.specials += MultiReg(self.reset_pb, self._status.fields.reset_pb, odomain="sys", n=2)
-        self.specials += MultiReg(self.pma_init, self._status.fields.pma_init, odomain="sys", n=2)
-        self.specials += MultiReg(mmcm_not_locked, self._status.fields.mmcm_not_locked, odomain="sys", n=2)
+        from cores.xpm_fifo import XPMMultiReg
+        self.specials += XPMMultiReg(self.reset_pb, self._status.fields.reset_pb, odomain="sys", n=8)
+        self.specials += XPMMultiReg(self.pma_init, self._status.fields.pma_init, odomain="sys", n=8)
+        self.specials += XPMMultiReg(mmcm_not_locked, self._status.fields.mmcm_not_locked, odomain="sys", n=8)
 
         self.ip_params.update(
             i_s_axi_tx_tdata    = cdc_tx.source.data,
@@ -209,13 +220,13 @@ class Aurora64b66b(Module, AutoCSR):
             o_m_axi_rx_tvalid   = self.cdc_rx.sink.valid,
         )
 
-        lane_up                     = Signal(LANES)
-        channel_up                  = Signal()
-        hard_err                    = Signal()
-        soft_err                    = Signal()
+        lane_up                     = Signal(LANES,reset_less=True)
+        channel_up                  = Signal(reset_less=True)
+        hard_err                    = Signal(reset_less=True)
+        soft_err                    = Signal(reset_less=True)
         # Status Output
-        _gt_qpllrefclklost_quad1_out = Signal()
-        _gt_qplllock_quad1_out = Signal()
+        _gt_qpllrefclklost_quad1_out = Signal(reset_less=True)
+        _gt_qplllock_quad1_out = Signal(reset_less=True)
         self.ip_params.update(
             o_gt_qpllclk_quad1_out        = Signal(),
             o_gt_qpllrefclk_quad1_out     = Signal(),
@@ -235,10 +246,10 @@ class Aurora64b66b(Module, AutoCSR):
         )
         from util.xilinx_vio import XilinxVIO
         self.submodules.vio = vio = XilinxVIO(platform)
-        vio.add_input_probe(lane_up)
-        vio.add_input_probe(channel_up)
-        vio.add_input_probe(hard_err)
-        vio.add_input_probe(soft_err)
+        vio.add_input_probe(lane_up, cd_dp)
+        vio.add_input_probe(channel_up, cd_dp)
+        vio.add_input_probe(hard_err, cd_dp)
+        vio.add_input_probe(soft_err, cd_dp)
         vio.add_input_probe(self.pma_init)
         vio.add_input_probe(self.reset_pb)
         vio.add_input_probe(_reset_seq_done)

@@ -122,4 +122,33 @@ class XPMSyncStreamFIFO(XPMStreamFIFO):
             sync_stages=0, 
             buffered=buffered, 
             xpm=xpm)
+
+class _XPMMultiRegImpl(Module):
+    def __init__(self, i, o, odomain, n, reset=0):
+        self.i = i
+        self.o = o
+        self.odomain = odomain
+
+        w, signed = value_bits_sign(self.i)
+        self.regs = [Signal((w, signed), reset=reset, reset_less=True)
+                for i in range(n)]
+
+        ###
         
+        self.specials += Instance(
+            "xpm_cdc_array_single",
+            p_DEST_SYNC_FF  = 4,
+            p_SRC_INPUT_REG = 0,
+            p_WIDTH         = len(self.i),
+            i_src_in        = self.i,
+            i_src_clk       = 0b0,
+            i_dest_clk      = self.odomain.clk if isinstance(self.odomain, ClockDomain) else ClockSignal(self.odomain),
+            o_dest_out      = self.o,
+            name            = "MR_xpm_" + self.i.backtrace[-1][0]
+        )
+
+from migen.genlib.cdc import MultiReg
+class XPMMultiReg(MultiReg):
+    @staticmethod
+    def lower(dr):
+        return _XPMMultiRegImpl(dr.i, dr.o, dr.odomain, dr.n, dr.reset)

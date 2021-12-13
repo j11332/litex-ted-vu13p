@@ -16,6 +16,13 @@ def _diff_clk(name, id, pin_n, pin_p):
         Subsignal("p", Pins(pin_p))
     )
 
+"""
+
+BF19  I2C_MAIN_RESET_B_LS
+BF20  I2C_MAIN_SCL_LS
+BF17  I2C_MAIN_SDA_LS
+"""
+
 _io = [
     ("qsfp", 0,
         Subsignal("rx_n", Pins("n3 m1 l3 k1")),
@@ -42,6 +49,20 @@ _io = [
     ("qsfp1_fs", 0,
         Subsignal("fs", Pins("AR22 AU20"), IOStandard("LVCMOS12")),
         Subsignal("rst", Pins("AR21"), IOStandard("LVCMOS12")),
+    ),
+    ("qsfp_ls", 0,
+        Subsignal("MODSELL", Pins("BE16"), IOStandard("LVCMOS12")),
+        Subsignal("RESETL",  Pins("BE17"), IOStandard("LVCMOS12")),
+        Subsignal("MODPRSL", Pins("BE20"), IOStandard("LVCMOS12")),
+        Subsignal("INTL",    Pins("BE21"), IOStandard("LVCMOS12")),
+        Subsignal("LPMODE",  Pins("BD18"), IOStandard("LVCMOS12")),
+    ),
+    ("qsfp_ls", 1,
+        Subsignal("MODSELL", Pins("AY20"), IOStandard("LVCMOS12")),
+        Subsignal("RESETL",  Pins("BC18"), IOStandard("LVCMOS12")),
+        Subsignal("MODPRSL", Pins("BC19"), IOStandard("LVCMOS12")),
+        Subsignal("INTL",    Pins("AV21"), IOStandard("LVCMOS12")),
+        Subsignal("LPMODE",  Pins("AV22"), IOStandard("LVCMOS12")),
     ),
     # Clk / Rst
     ("sys_clk", 0,
