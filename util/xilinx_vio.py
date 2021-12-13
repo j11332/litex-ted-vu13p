@@ -16,7 +16,8 @@ class XilinxVIO(Module):
     def add_input_probe(self, sig, is_async_sig=True):
         if is_async_sig:
             _probe = Signal(len(sig), name=sig.backtrace[-1][0], reset_less=True)
-            cdc = MultiReg(sig, _probe, n=2)
+            cdc = MultiReg(sig, _probe, n=8)
+            _probe.attr.add(("dont_touch", "true"))
             self.specials += cdc
             self.probe_in += [_probe]
         else:
