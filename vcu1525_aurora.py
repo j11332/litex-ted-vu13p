@@ -26,7 +26,20 @@ from cores.kyokko.aurora import Aurora64b66b
 from util.reset import XilinxStartupReset
 
 class _CRGBlock(Module):
+    """_CRGBlock
+        Same as _CRG but with Xilinx Clocking Wizard IP.        
+
+    Args:
+        platform: Platform
+            LiteX-boards platform object
+        
+        sys_clk_freq: int
+            Default(sys_clk) clock frequency
+            
+    """
     def __init__(self, platform, sys_clk_freq):
+        if sys_clk_freq is not int(300e6):
+            NotImplemented("FIXME: Default clock should be 300 MHz.")
         self.locked = Signal()
         self.clock_domains.cd_sys    = ClockDomain()
         self.clock_domains.cd_clk100  = ClockDomain()
@@ -112,8 +125,8 @@ class _CRG(Module):
         #               |______|_20us_
         # FPGA MMCM rst |      |      \____
         self.submodules.startup = startup = XilinxStartupReset()
-        for _pn in ["qsfp0_fs", "qsfp1_fs"]:
-            _pads = platform.request(_pn)
+        for _pn in range(0, 2):
+            _pads = platform.request("qsfp_fs", _pn)
             self.comb += [
                 _pads.fs.eq(0b10),
                 _pads.rst.eq(startup.cd_cfgmclk_por.rst),
@@ -144,7 +157,7 @@ class _CRG(Module):
         self.submodules += USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
 class BaseSoC(SoCCore):
-    def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, **kwargs):
+    def __init__(self, sys_clk_freq=int(200e6), disable_sdram=False, use_clkwiz = False, **kwargs):
         platform = Platform()
 
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -153,9 +166,9 @@ class BaseSoC(SoCCore):
             cpu_type       = "vexriscv",
             **kwargs)
 
-        self.submodules.crg = _CRG(platform, sys_clk_freq)
-        # self.submodules.crg = _CRGBlock(platform, sys_clk_freq)
-
+        crg = _CRGBlock(platform, sys_clk_freq) if use_clkwiz else _CRG(platform, sys_clk_freq)
+        self.submodules.crg = crg
+        
         if not disable_sdram:
             if not self.integrated_main_ram_size:
                 NotImplementedError()
@@ -174,7 +187,7 @@ class BaseSoC(SoCCore):
         self.submodules.ky_0 = kyokko = Aurora64b66b(
             platform,
             platform.request("qsfp", 0),
-            platform.request("qsfp0_refclk161m"),
+            platform.request("qsfp0_refclk1"),
             cd_freerun="clk100",
         )
         self.submodules.k2mm_0 = k2mm = K2MM(dw=256)
@@ -189,7 +202,7 @@ class BaseSoC(SoCCore):
         self.submodules.ky_1 = ky1 = Aurora64b66b(
             platform, 
             platform.request("qsfp", 1),
-            platform.request("qsfp1_refclk161m"),
+            platform.request("qsfp1_refclk1"),
             cd_freerun="clk100",
             with_ila=False
         )
@@ -209,12 +222,15 @@ class BaseSoC(SoCCore):
     def do_finalize(self):
         self.platform.finalize_tcl_ip()
         SoCCore.do_finalize(self)
+
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on vcu1525")
-    parser.add_argument("--build",        action="store_true", help="Build bitstream")
-    parser.add_argument("--load",         action="store_true", help="Load bitstream")
-    parser.add_argument("--sys-clk-freq", default=400e6,       help="System clock frequency (default: 300MHz)")
-    parser.add_argument("--disable_sdram", action="store_true", help="Build without onboard memory controller (default: false)")
+    parser.add_argument("--build",          action="store_true", help="Build bitstream")
+    parser.add_argument("--load",           action="store_true", help="Load bitstream")
+    parser.add_argument("--disable-sdram",  action="store_true", help="Build without onboard memory controller. (default: false)")
+    parser.add_argument("--sys-clk-freq",   default=400e6,       help="System clock frequency (default: 300MHz)")
+    parser.add_argument("--use-clkwiz",     action="store_true", help="Generate CRG(Clock Reset Generator) with Xilinx Clocking Wizard IP. (default: false)")
+    
     builder_args(parser)
     soc_core_args(parser)
     args = parser.parse_args()
@@ -222,12 +238,12 @@ def main():
     soc = BaseSoC(
         disable_sdram = True if args.disable_sdram else False,
         sys_clk_freq = int(float(args.sys_clk_freq)),
+        use_clkwiz   = args.use_clkwiz,
         **soc_core_argdict(args)
     )
 
     builder = LocalBuilder(soc, **builder_argdict(args))
 
-    from litex.build import tools
     vns = builder.build(run=args.build)
     soc.platform.ila.generate_ila(builder.gateware_dir)
 

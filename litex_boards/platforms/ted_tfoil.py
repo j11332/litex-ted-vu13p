@@ -1,51 +1,39 @@
 # This file is part of LiteX-Boards.
 # SPDX-License-Identifier: BSD-2-Clause
 from litex.build.generic_platform import *
-from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
+from litex.soc.cores.clock.common import clkdiv_range
+from litex_boards.xilinx import XilinxPlatform
+from litex_boards.utils import diff_clk
 
 # IOs
 _io = [
     # Clk / Rst
-    ("sys_clk_0", 0,
-        Subsignal("p", Pins("BE22"), IOStandard("DIFF_SSTL12")),
-        Subsignal("n", Pins("BF22"), IOStandard("DIFF_SSTL12")),
-    ),
-    ("sys_clk_1", 0,
-        Subsignal("p", Pins("N27"), IOStandard("DIFF_SSTL12")),
-        Subsignal("n", Pins("M27"), IOStandard("DIFF_SSTL12")),
-    ),
-    ("clk125", 0, Pins("BD16"), IOStandard("LVCMOS18")),
+    diff_clk("clk_200", 0, "BF22", "BE22", iostandard="DIFF_SSTL12"),
+    diff_clk("clk_200", 1, "M27",  "N27",  iostandard="DIFF_SSTL12"),
+    ("clk_125", 0, Pins("BD16"), IOStandard("LVCMOS18")),
+    
     # GTY120 / X0Y0
-    ("MGTREFCLK_120_", 0, # UNIV
-        Subsignal("n", Pins("BD40")), 
-        Subsignal("p", Pins("BD39"))
-    ),
-    ("MGTREFCLK_120_", 1, # UNIV 
-        Subsignal("n", Pins("BC42")), 
-        Subsignal("p", Pins("BC41"))
-    ),
+    diff_clk("MGTREFCLK_120_", 0, "BD40", "BD39"), # UNIV
+    diff_clk("MGTREFCLK_120_", 1, "BC42", "BC41"), # UNIV
     ("GTY120", 0,
-        Subsignal("rxn", Pins("BG33 BF35 BJ33 BH35")),
-        Subsignal("rxp", Pins("BG32 BF34 BJ32 BH34")),
-        Subsignal("txn", Pins("BH40 BF40 BJ38 BG38")),
-        Subsignal("txp", Pins("BH39 BF39 BJ37 BG37")),
+        Subsignal("rx_n", Pins("BG33 BF35 BJ33 BH35")),
+        Subsignal("rx_p", Pins("BG32 BF34 BJ32 BH34")),
+        Subsignal("tx_n", Pins("BH40 BF40 BJ38 BG38")),
+        Subsignal("tx_p", Pins("BH39 BF39 BJ37 BG37")),
     ),
-    # GTY121 / X1Y1
-    ("MGTREFCLK_121_", 0, # Clock Gen.
-        Subsignal("n", Pins("BB40")),
-        Subsignal("p", Pins("BB39")),
-    ),
-    ("MGTREFCLK_121_", 1, # COAX.
-        Subsignal("n", Pins("BA42")),
-        Subsignal("p", Pins("BA41")),
-    ),
+    
+    # GTY121 / X0Y1
+    diff_clk("MGTREFCLK_121_", 0, "BB40", "BB39"), # Clock gen.
+    diff_clk("MGTREFCLK_121_", 1, "BA42", "BA41"), # Coax.
     ("GTY121", 0,
-        Subsignal("rxn", Pins("BK35 BL33 BL47 BJ47")),
-        Subsignal("rxp", Pins("BK34 BL32 BL46 BJ46")),
-        Subsignal("txn", Pins("BL38 BK40 BL42 BK44")),
-        Subsignal("txp", Pins("BL37 BK39 BL41 BK43")),
+        Subsignal("rx_n", Pins("BK35 BL33 BL47 BJ47")),
+        Subsignal("rx_p", Pins("BK34 BL32 BL46 BJ46")),
+        Subsignal("tx_n", Pins("BL38 BK40 BL42 BK44")),
+        Subsignal("tx_p", Pins("BL37 BK39 BL41 BK43")),
+        PlatformInfo({"quad" : "Quad_X0Y1", "channel" : ("X0Y4", "X0Y5", "X0Y6", "X0Y7")}),
     ),
-    #
+    
+    # GTY122
     ("MGTREFCLK_122_", 0,
         Subsignal("N", Pins("AY40")),
         Subsignal("P", Pins("AY39")),
@@ -55,10 +43,10 @@ _io = [
         Subsignal("P", Pins("AW41")),
     ),
     ("GTY122", 0,
-        Subsignal("RXN", Pins("BH49 BG51 BG47 BF49")),
-        Subsignal("RXP", Pins("BH48 BG50 BG46 BF48")),
-        Subsignal("TXN", Pins("BG42 BJ42 BH44 BF44")),
-        Subsignal("TXP", Pins("BG41 BJ41 BH43 BF43")),
+        Subsignal("rx_n", Pins("BH49 BG51 BG47 BF49")),
+        Subsignal("rx_p", Pins("BH48 BG50 BG46 BF48")),
+        Subsignal("tx_n", Pins("BG42 BJ42 BH44 BF44")),
+        Subsignal("tx_p", Pins("BG41 BJ41 BH43 BF43")),
     ),
     
     # PSW[0] - Active-low
@@ -198,49 +186,44 @@ _connectors = []
 
 # Platform
 class Platform(XilinxPlatform):
-    default_clk_name   = "sys_clk_0"
-    default_clk_period = 1e9/200e6
-    ip_presets = {
-        "ibert": {
-            "CONFIG.C_SYSCLK_FREQUENCY"             : "125",
-            "CONFIG.C_SYSCLK_IO_PIN_LOC_N"          : "UNASSIGNED",
-            "CONFIG.C_SYSCLK_IO_PIN_LOC_P"          : "BD16",
-            "CONFIG.C_SYSCLK_IS_DIFF"               : "0",
-            "CONFIG.C_SYSCLK_IO_PIN_STD"            : "LVCMOS18",
-            "CONFIG.C_REFCLK_SOURCE_QUAD_1"         : "MGTREFCLK0_121",
-            "CONFIG.C_REFCLK_SOURCE_QUAD_0"         : "MGTREFCLK0_121",
-            "CONFIG.C_PROTOCOL_QUAD1"               : "Custom_1_/_25.78125_Gbps",
-            "CONFIG.C_PROTOCOL_QUAD0"               : "Custom_1_/_25.78125_Gbps",
-            "CONFIG.C_GT_CORRECT"                   : "true",
-            "CONFIG.C_PROTOCOL_QUAD_COUNT_1"        : "2",
-            "CONFIG.C_PROTOCOL_REFCLK_FREQUENCY_1"  : "161.1328125",
-            "CONFIG.C_PROTOCOL_MAXLINERATE_1"       : "25.78125",
-        }
-    }
-
+    default_clk_name        = ("clk_200", 0)
+    _default_clk_freq_f      = 200e6
+    default_clk_freq        = int(_default_clk_freq_f)
+    default_clk_period_ns   = (1e9/_default_clk_freq_f)
+    part                    = "xcvu13p-flga2577-2-e"
+    
     def __init__(self):
-        XilinxPlatform.__init__(self, "xcvu13p-flga2577-2-e", _io, _connectors, toolchain="vivado")
-
-    def create_programmer(self):
-        return VivadoProgrammer()
+        XilinxPlatform.__init__(self, self.part, _io, _connectors, toolchain="vivado")
+        self.set_ip_cache_dir("./tmp/ip_cache")
+        import util.xilinx_ila
+        self.ila = util.xilinx_ila.XilinxILATracer(self)
 
     def do_finalize(self, fragment):
         XilinxPlatform.do_finalize(self, fragment)
-        self.add_period_constraint(self.lookup_request("sys_clk_0", loose=True), 1e9/200e6)
-        self.add_period_constraint(self.lookup_request("sys_clk_1", loose=True), 1e9/200e6)
-        self.add_period_constraint(self.lookup_request("clk125",    loose=True), 1e9/125e6)
+        for _id in range(0, 2):
+            self.add_period_constraint(self.lookup_request("clk_200", _id, loose=True), 1e9/200e6)
+            
+        self.add_period_constraint(self.lookup_request("clk_125", loose=True), 1e9/125e6)
 
-        self.add_platform_command("set_property CONFIG_VOLTAGE 1.8                      [current_design]")
-        self.add_platform_command("set_property CFGBVS GND                              [current_design]")
-        self.add_platform_command("set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN DIV-1 [current_design]")
-        self.add_platform_command("set_property BITSTREAM.CONFIG.CONFIGRATE 31.9        [current_design]")
-        self.add_platform_command("set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES     [current_design]")
-        self.add_platform_command("set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 8         [current_design]")
-        self.add_platform_command("set_property BITSTREAM.GENERAL.COMPRESS TRUE         [current_design]")
-        self.add_platform_command("set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES      [current_design]")
+        self.add_platform_command(
+            "set_property -dict {{ "
+                "CONFIG_VOLTAGE 1.8 "
+                "CFGBVS GND "
+                "BITSTREAM.CONFIG.EXTMASTERCCLK_EN DIV-1 "
+                "BITSTREAM.CONFIG.CONFIGRATE 31.9 "
+                "BITSTREAM.CONFIG.SPI_32BIT_ADDR YES "
+                "BITSTREAM.CONFIG.SPI_BUSWIDTH 8 "
+                "BITSTREAM.GENERAL.COMPRESS TRUE "
+                "BITSTREAM.CONFIG.SPI_FALL_EDGE YES"
+            " }} [current_design]"
+        )
 
         # DDR4 memory channel C1, C2 Internal Vref
         for bank in ["61", "62", "63", "73", "74", "75"]:
             self.add_platform_command(
                 f"set_property INTERNAL_VREF 0.84 [get_iobanks {bank}]"
             )
+        
+        # FIXME: Apply before opt_design
+        self.add_platform_command(
+            "set_property -quiet CLOCK_DEDICATED_ROUTE FALSE [get_nets clk_125_IBUF_inst/O]")

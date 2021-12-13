@@ -9,37 +9,45 @@
 
 import os
 import argparse
-
+# migen
 from migen import *
-from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.fhdl.structure import Cat
-from litex_boards.platforms import ted_tfoil
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
-from litex.soc.cores.bitbang import I2CMaster
 from litex.soc.cores.gpio import GPIOOut, GPIOIn
-from cores.i2c_multiport import I2CMasterMP
 
-
+# LiteX
 from litedram.modules import MT40A1G8
 from litedram.phy import usddrphy
+from migen.genlib.resetsync import AsyncResetSynchronizer
+
+# Local
+from litex_boards.platforms import ted_tfoil
 from localbuilder import LocalBuilder
+from cores.i2c_multiport import I2CMasterMP
 
 class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
-        self.rst = Signal()
+        self.rst = Signal(reset_less=True)
+        self.locked = Signal(reset_less=True)
+        
         self.clock_domains.cd_sys    = ClockDomain()
+        self.clock_domains.cd_clk125 = ClockDomain()
         self.clock_domains.cd_sys4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_pll4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_idelay = ClockDomain()
 
         self.submodules.pll = pll = USMMCM(speedgrade=-2)
-        self.comb += pll.reset.eq((~platform.request("cpu_resetn")) | self.rst)
-        pll.register_clkin(platform.request("sys_clk_0"), 200e6)
+        pll.register_clkin(platform.request(*platform.default_clk_name), platform.default_clk_freq)
         pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
         pll.create_clkout(self.cd_idelay, 400e6)
+        self.comb += [
+            self.locked.eq(pll.locked),
+            pll.reset.eq((~platform.request("cpu_resetn")) | self.rst),    
+        ]
+        
         platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin) # Ignore sys_clk to pll.clkin path created by SoC's rst.
 
         self.specials += [
@@ -48,8 +56,11 @@ class _CRG(Module):
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys.clk),
             Instance("BUFGCE", name="main_bufgce",
                 i_CE=1, i_I=self.cd_pll4x.clk, o_O=self.cd_sys4x.clk),
+            Instance("BUFGCE", name="clk125_bufgce",
+                i_CE=1, i_I=platform.request("clk_125"), o_O=self.cd_clk125.clk),
+            AsyncResetSynchronizer(self.cd_clk125, ~self.locked),
         ]
-
+        
         self.submodules.idelayctrl = USIDELAYCTRL(cd_ref=self.cd_idelay, cd_sys=self.cd_sys)
 
 class BaseSoC(SoCCore):
@@ -115,12 +126,38 @@ class BaseSoC(SoCCore):
         self.submodules.sb_si5341_o = GPIOOut(pads = sb_si5341_o_pads)
         self.submodules.sb_si5341_i = GPIOIn(pads = sb_si5341_i_pads)
 
+        self._add_aurora(platform)
+
+    def _add_aurora(self, platform):
+        from cores.tf.framing import K2MMControl, K2MM
+        from cores.kyokko.aurora import Aurora64b66b
+        # Port #1
+        self.submodules.ky_0 = kyokko = Aurora64b66b(
+            platform,
+            platform.request("GTY121", 0),
+            platform.request("MGTREFCLK_121_", 0),
+            cd_freerun="clk125",
+            freerun_clk_freq=int(125e6)
+        )
+        self.submodules.k2mm_0 = k2mm = K2MM(dw=256)
+        self.comb += [
+            kyokko.init_clk_locked.eq(self.crg.locked),
+            kyokko.source_user_rx.connect(k2mm.sink_packet_rx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+            k2mm.source_packet_tx.connect(kyokko.sink_user_tx, omit={"last_be", "error", "src_port", "dst_port", "ip_address", "length"}),
+        ]
+        self.submodules.k2mmctrl_0 = k2mmctrl_0 = K2MMControl(k2mm, dw=256)
+        self.comb += k2mmctrl_0.source_ctrl.connect(k2mm.sink_tester_ctrl)
+    
+    def do_finalize(self):
+        self.platform.finalize_tcl_ip()
+        SoCCore.do_finalize(self)
+        
 def main():
     parser = argparse.ArgumentParser(description="LiteX SoC on tfoil")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
     parser.add_argument("--load",         action="store_true", help="Load bitstream")
     parser.add_argument("--sys-clk-freq", default=200e6,       help="System clock frequency (default: 200MHz)")
-    parser.add_argument("--disable_sdram", action="store_true", help="Build without onboard memory controller (default: false)")
+    parser.add_argument("--disable-sdram", action="store_true", help="Build without onboard memory controller (default: false)")
     builder_args(parser)
     soc_core_args(parser)
     args = parser.parse_args()
@@ -131,7 +168,9 @@ def main():
         **soc_core_argdict(args)
     )
     builder = LocalBuilder(soc, **builder_argdict(args))
+    
     builder.build(run=args.build)
+    soc.platform.ila.generate_ila(builder.gateware_dir)
 
     if args.load:
         prog = soc.platform.create_programmer()

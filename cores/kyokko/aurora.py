@@ -145,6 +145,7 @@ class Aurora64b66b(Module, AutoCSR):
             "CONFIG.SupportLevel"        : "1",
             "CONFIG.C_USE_BYTESWAP"      : "true",
             "CONFIG.C_GTWIZ_OUT"         : "false",
+            "CONFIG.C_UCOLUMN_USED"      : "left" if pads.platform_info['quad'][5: -2] == "X0" else "right",
         }
 
         platform.add_tcl_ip(ip_vlnv, self.refname, self.ip_cfg)
@@ -255,6 +256,8 @@ class Aurora64b66b(Module, AutoCSR):
         vio.add_input_probe(_reset_seq_done)
         vio.add_input_probe(_gt_qpllrefclklost_quad1_out)
         vio.add_input_probe(_gt_qplllock_quad1_out)
+        
+        # FIXME: Timing error on Trefoil platform
         vio.add_output_probe(_vio_reset)
 
         for _n in range(0, LANES):

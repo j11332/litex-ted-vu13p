@@ -166,7 +166,7 @@ class BaseSoC(SoCCore):
         self.submodules.ky_0 = kyokko = KyokkoBlock(
             platform, 
             platform.request("qsfp", 0),
-            platform.request("qsfp0_refclk161m"),
+            platform.request("qsfp0_refclk1"),
             cd_freerun="clk100"
         )
         self.submodules.k2mm_0 = k2mm = K2MM(dw=256)

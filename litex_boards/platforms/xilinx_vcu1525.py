@@ -5,16 +5,9 @@
 # Copyright (c) 2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
-import json
 from litex.build.generic_platform import Pins, PlatformInfo, Subsignal, IOStandard, Misc
-from litex.build.xilinx import XilinxPlatform, VivadoProgrammer
-import os.path
-
-def _diff_clk(name, id, pin_n, pin_p):
-    return (name, id,
-        Subsignal("n", Pins(pin_n)),
-        Subsignal("p", Pins(pin_p))
-    )
+from litex_boards.xilinx import XilinxPlatform
+from litex_boards.utils import diff_clk
 
 """
 
@@ -24,6 +17,7 @@ BF17  I2C_MAIN_SDA_LS
 """
 
 _io = [
+    # QSFP GTY TX/RX
     ("qsfp", 0,
         Subsignal("rx_n", Pins("n3 m1 l3 k1")),
         Subsignal("rx_p", Pins("n4 m2 l4 k2")),
@@ -38,49 +32,48 @@ _io = [
         Subsignal("tx_p", Pins("U9 T7 R9 P7")),
         PlatformInfo({"quad" : "Quad_X1Y11", "channel" : ("X1Y44", "X1Y45", "X1Y46", "X1Y47")}),
     ),
-    _diff_clk("qsfp0_refclk156m", 0, "m10", "m11"),
-    _diff_clk("qsfp0_refclk161m", 0, "k10", "k11"),
-    _diff_clk("qsfp1_refclk156m", 0, "T10", "T11"),
-    _diff_clk("qsfp1_refclk161m", 0, "P10", "P11"),
-    ("qsfp0_fs", 0,
+    
+    # QSFP GTY reference clock
+    diff_clk("qsfp0_refclk156m", 0, "m10", "m11"),
+    diff_clk("qsfp0_refclk1", 0, "k10", "k11"),
+    diff_clk("qsfp1_refclk156m", 0, "T10", "T11"),
+    diff_clk("qsfp1_refclk1", 0, "P10", "P11"),
+    
+    # QSFP GTY reference clock select
+    # fs[1:0]        01          10
+    # qsfpn_refclk1  156 MHz     161 MHz
+    ("qsfp_fs", 0,
         Subsignal("fs", Pins("AT20 AU22"), IOStandard("LVCMOS12")),
         Subsignal("rst", Pins("AT22"), IOStandard("LVCMOS12"))
     ),
-    ("qsfp1_fs", 0,
+    ("qsfp_fs", 1,
         Subsignal("fs", Pins("AR22 AU20"), IOStandard("LVCMOS12")),
         Subsignal("rst", Pins("AR21"), IOStandard("LVCMOS12")),
     ),
+    
+    # QSFP sideband
     ("qsfp_ls", 0,
-        Subsignal("MODSELL", Pins("BE16"), IOStandard("LVCMOS12")),
-        Subsignal("RESETL",  Pins("BE17"), IOStandard("LVCMOS12")),
-        Subsignal("MODPRSL", Pins("BE20"), IOStandard("LVCMOS12")),
-        Subsignal("INTL",    Pins("BE21"), IOStandard("LVCMOS12")),
-        Subsignal("LPMODE",  Pins("BD18"), IOStandard("LVCMOS12")),
+        Subsignal("MODSELL", Pins("BE16")),
+        Subsignal("RESETL",  Pins("BE17")),
+        Subsignal("MODPRSL", Pins("BE20")),
+        Subsignal("INTL",    Pins("BE21")),
+        Subsignal("LPMODE",  Pins("BD18")),
+        IOStandard("LVCMOS12"),
     ),
     ("qsfp_ls", 1,
-        Subsignal("MODSELL", Pins("AY20"), IOStandard("LVCMOS12")),
-        Subsignal("RESETL",  Pins("BC18"), IOStandard("LVCMOS12")),
-        Subsignal("MODPRSL", Pins("BC19"), IOStandard("LVCMOS12")),
-        Subsignal("INTL",    Pins("AV21"), IOStandard("LVCMOS12")),
-        Subsignal("LPMODE",  Pins("AV22"), IOStandard("LVCMOS12")),
+        Subsignal("MODSELL", Pins("AY20")),
+        Subsignal("RESETL",  Pins("BC18")),
+        Subsignal("MODPRSL", Pins("BC19")),
+        Subsignal("INTL",    Pins("AV21")),
+        Subsignal("LPMODE",  Pins("AV22")),
+        IOStandard("LVCMOS12"),
     ),
+    
     # Clk / Rst
-    ("sys_clk", 0,
-        Subsignal("n", Pins("AY38"), IOStandard("DIFF_SSTL12")),
-        Subsignal("p", Pins("AY37"), IOStandard("DIFF_SSTL12")),
-    ),
-    ("sys_clk", 1,
-        Subsignal("n", Pins("AW19"), IOStandard("DIFF_SSTL12")),
-        Subsignal("p", Pins("AW20"), IOStandard("DIFF_SSTL12")),
-    ),
-    ("sys_clk", 2,
-        Subsignal("n", Pins("E32"), IOStandard("DIFF_SSTL12")),
-        Subsignal("p", Pins("F32"), IOStandard("DIFF_SSTL12")),
-    ),
-    ("sys_clk", 3,
-        Subsignal("n", Pins("H16"), IOStandard("DIFF_SSTL12")),
-        Subsignal("p", Pins("J16"), IOStandard("DIFF_SSTL12")),
-    ),
+    diff_clk("sys_clk", 0, "AY38", "AY37", iostandard = "DIFF_SSTL12"),
+    diff_clk("sys_clk", 1, "AW19", "AW20", iostandard = "DIFF_SSTL12"),
+    diff_clk("sys_clk", 2, "E32",  "F32",  iostandard = "DIFF_SSTL12"),
+    diff_clk("sys_clk", 3, "H16",  "J16",  iostandard = "DIFF_SSTL12"),
 
     # Leds
     ("user_led", 0, Pins("BC21"), IOStandard("LVCMOS12")),
@@ -318,33 +311,14 @@ class Platform(XilinxPlatform):
     default_clk_name   = "clk300"
     default_clk_period = 1e9/300e6
     part = "xcvu9p-fsgd2104-2l-e"
-
+    toolchain = "vivado"
+    
     def __init__(self):
         XilinxPlatform.__init__(self, self.part, _io, _connectors, toolchain="vivado")
         self.set_ip_cache_dir("./tmp/ip_cache")
         import util.xilinx_ila
         self.ila = util.xilinx_ila.XilinxILATracer(self)
-        self.tcl_ip_vars = []
-                
-    def create_programmer(self):
-        return VivadoProgrammer()
 
-    def set_ip_cache_dir(self, cache_dir):
-        self.toolchain.pre_synthesis_commands += [f"config_ip_cache -import_from_project -use_cache_location {cache_dir}"]
-    
-    def add_source(self, filename, language=None, library=None, project=False):
-        if not project:
-            super().add_source(filename, language, library)
-        else:
-            fullpath = os.path.abspath(filename)
-            self.toolchain.pre_synthesis_commands += [
-                f"add_files {fullpath}"
-            ]
-    
-    def add_sources(self, path, *filenames, language=None, library=None, project=False):
-        for f in filenames:
-            self.add_source(os.path.join(path, f), language, library, project)
-    
     def do_finalize(self, fragment):
         
         super().do_finalize(self, fragment)
@@ -377,38 +351,6 @@ class Platform(XilinxPlatform):
                 self.lookup_request(f"qsfp{i}_refclk156m", 0, loose=True),
                 1e9/156.25e6)
             self.add_period_constraint(
-                self.lookup_request(f"qsfp{i}_refclk161m", 0, loose=True),
+                self.lookup_request(f"qsfp{i}_refclk1", 0, loose=True),
                 1e9/161.1328125e6)
-
-    def add_tcl_ip(self, ipdef, name, config):
-        self.toolchain.pre_synthesis_commands += [
-            "create_ip "
-            f"-vlnv {ipdef}:* "
-            f"-module_name {name}"
-        ]
-        
-        ip_params_json = json.dumps(config)
-        self.toolchain.pre_synthesis_commands += [
-            "set_property -quiet "
-            "-dict [bd::json2dict {{"
-            f"{{{ip_params_json}}}"
-            "}}] "
-            f"[get_ips {name}]"
-        ]
-        
-        self.toolchain.pre_synthesis_commands += [
-            f"generate_target all [get_ips {name}]",
-            "catch {{" f"config_ip_cache -export [get_ips -all {name}]" "}}",
-            f"export_ip_user_files -of_objects [get_files [get_property IP_FILE [get_ips {name}]]] -no_script -sync -force -quiet",
-            f"set {name}_run [create_ip_run -force [get_files -of_objects [get_fileset sources_1] [get_property IP_FILE [get_ips {name}]]]]"
-        ]
-        self.tcl_ip_vars += [name]
-
-    def finalize_tcl_ip(self):
-        tcl_runs = " ".join([f"${name}_run" for name in self.tcl_ip_vars])
-        self.toolchain.pre_synthesis_commands += [
-            "launch_runs -jobs 10 " f"{tcl_runs}",
-            f"foreach run [list " f"{tcl_runs}]" " {{",
-            "    wait_on_run $run",
-            "}}"
-        ]
+            
