@@ -21,6 +21,7 @@ OBJECTS = isr.o			\
 	  cmd_litesata.o    \
 	  cmd_firefly.o		\
 	  sim_debug.o		\
+	  trefoil_dev.o     \
 	  main.o
 
 ifneq "$(or $(TERM_NO_COMPLETE),$(TERM_MINI))" ""

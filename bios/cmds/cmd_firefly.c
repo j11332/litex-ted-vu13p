@@ -10,20 +10,13 @@
 #include "../command.h"
 #include "../helpers.h"
 
+#include "../delay.h"
+#include "../trefoil_dev.h"
+
 #define I2C_SLV_ADDR_TCA9555 0x20
 #define I2C_SLV_ADDR_TCA9548 0x70
 #define I2C_SLV_ADDR_SI5341 0x77
 #define I2C_SLV_ADDR_FIREFLY 0x50
-
-#define DELAY_MS(n) cdelay((n)*(CONFIG_CLOCK_FREQUENCY/4000))
-
-static inline void cdelay(int i)
-{
-	while(i > 0) {
-		__asm__ volatile(CONFIG_CPU_NOP);
-		i--;
-	}
-}
 
 /**
  * Command "reset_si5341"
@@ -34,12 +27,8 @@ static inline void cdelay(int i)
 #ifdef CSR_SB_SI5341_O_BASE
 static void reset_si5341_handler(int nb_params, char **params)
 {
-	sb_si5341_o_out_write(0x0C);  // in_sel_0->L, syncb->H, rstb->L
-	DELAY_MS(500);
-	sb_si5341_o_out_write(0x3C);  // in_sel_0->L, syncb->H, rstb->H
-	return;
+	trefoil_clock_gen_reset();
 }
-
 define_command(reset_si5341, reset_si5341_handler, "Reset all SI5341", FIREFLY_CMDS);
 #endif
 
@@ -231,10 +220,7 @@ define_command(get_si5341_n_divider, get_si5341_n_divider_handler, "Get N divide
 #ifdef CSR_SB_TCA9548_BASE
 static void reset_tca9548_handler(int nb_params, char **params)
 {
-	sb_tca9548_out_write(0x00);  // assert reset
-	DELAY_MS(500);
-	sb_tca9548_out_write(0x0f);  // de-assert reset
-	return;
+	trefoil_iicio_reset();
 }
 
 define_command(reset_tca9548, reset_tca9548_handler, "Reset all TCA9548", FIREFLY_CMDS);
@@ -301,10 +287,10 @@ i2c_w_err:
 	printf("Error during I2C write");
 	return;
 }
-
 define_command(reset_firefly, reset_firefly_handler, "Reset all FireFly modules", FIREFLY_CMDS);
 #endif
 
+#ifdef CSR_I2C_SEL_W_ADDR
 // GTY num to i2c_mux / tca9548_reg calculate
 static int gty2mux(uint8_t gty_num, uint8_t *i2c_mux, uint8_t *tca9548_reg)
 {
@@ -335,7 +321,6 @@ static int gty2mux(uint8_t gty_num, uint8_t *i2c_mux, uint8_t *tca9548_reg)
  * i2c_write for FireFly modules
  *
  */
-#ifdef CSR_I2C_SEL_W_ADDR
 static void i2c_write_firefly_handler(int nb_params, char **params)
 {
 	int i;
