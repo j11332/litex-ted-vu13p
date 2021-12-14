@@ -444,3 +444,77 @@ static void i2c_read_firefly_handler(int nb_params, char **params)
 
 define_command(i2c_read_firefly, i2c_read_firefly_handler, "i2c_read for FireFly modules", FIREFLY_CMDS);
 #endif
+
+/**
+ * Command "get_firefly_status"
+ *
+ * Get operation status for all FireFly module
+ *
+ */
+#ifdef CSR_I2C_SEL_W_ADDR
+static void get_firefly_status_handler(int nb_params, char **params)
+{
+	const char gty[28] = {120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
+		                  130, 131, 132, 133, 134, 135,
+	                      220, 221, 222, 223, 228, 229,
+						  230, 231, 232, 233, 234, 235};
+	int i;
+	uint8_t buf;
+	uint8_t i2c_mux, tca9548_reg;
+
+  for (i = 0; i < 28; i++) {
+		gty2mux(gty[i], &i2c_mux, &tca9548_reg);
+		i2c_sel_w_sel_write(i2c_mux);  // set i2c_mux
+
+		// set TCA9548 selector
+		if (!i2c_write(I2C_SLV_ADDR_TCA9548, tca9548_reg, 0, 0)) {
+			printf("Error during I2C write TCA9548");
+			return;
+		}
+
+		printf("GTY %d:", gty[i]);
+		if (!i2c_read(I2C_SLV_ADDR_FIREFLY, 0, &buf, 1, true)) {
+			printf("Not Connected\n");
+			continue;
+		} else {
+			printf("Connected\n");
+		}
+
+		// Loss of Signal Alarms
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 3, &buf, 1, true);
+		printf("  Loss of Signal Alarms : 0x%02x\n", buf);
+
+		// Transmit Fault Alarms
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 4, &buf, 1, true);
+		printf("         Transmit Fault : 0x%02x\n", buf);
+
+		// CDR Loss of Lock Alarms
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 5, &buf, 1, true);
+		printf("       CDR Loss of Lock : 0x%02x\n", buf);
+
+		// Temperature Alarms
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 6, &buf, 1, true);
+		printf("     Temperature Alarms : 0x%02x\n", buf);
+
+		// VCC Alarms
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 7, &buf, 1, true);
+		printf("             VCC Alarms : 0x%02x\n", buf);
+
+		// Received Power Alarms 0
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 9, &buf, 1, true);
+		printf("  Received Power Alarms : 0x%02x\n", buf);
+
+		// Received Power Alarms 1
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 10, &buf, 1, true);
+		printf("                        : 0x%02x\n", buf);
+
+		// Internal Temperature
+		i2c_read(I2C_SLV_ADDR_FIREFLY, 22, &buf, 1, true);
+		printf("   Internal Temperature : %d degC\n", buf);
+
+		printf("\n");
+	}
+}
+
+define_command(get_firefly_status, get_firefly_status_handler, "Get FireFly Status", FIREFLY_CMDS);
+#endif
