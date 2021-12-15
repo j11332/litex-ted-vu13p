@@ -34,22 +34,9 @@ class XilinxVIO(Module):
             ClockDomain of `sig`
         """
         _probe = Signal(len(sig), name=sig.backtrace[-1][0], reset_less=True)
-        _probe.attr.add(("dont_touch", "true"))
-        if cd is not None:
-            _src_clk = cd.clk if isinstance(cd, ClockDomain) else ClockSignal(cd)
+        _probe.attr.add(("mr_ff", "true"))
+        self.comb += _probe.eq(sig)
         
-        # FIXME: Better CDC with migen
-        self.specials += Instance(
-            "xpm_cdc_array_single",
-            p_DEST_SYNC_FF  = 4,
-            p_SRC_INPUT_REG = 0 if cd is None else 1,
-            p_WIDTH         = len(sig),
-            i_src_in        = sig,
-            i_src_clk       = 0b0 if cd is None else _src_clk,
-            i_dest_clk      = ClockSignal(),
-            o_dest_out      = _probe,
-            name            = "cdc_" + sig.backtrace[-1][0]
-        )
         self.probe_in += [_probe]
         
     
@@ -60,6 +47,7 @@ class XilinxVIO(Module):
         sig : Signal
             `Signal` to probe
         """
+        sig.attr.add(("mr_ff", "true"))
         self.probe_out += [sig]
 
     def do_finalize(self):

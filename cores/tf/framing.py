@@ -1,66 +1,19 @@
 #!/usr/bin/python3
 from re import M
 
+from migen import *
 from litex.soc.interconnect.csr import CSRStatus
+from liteeth.common import eth_udp_user_description
+from litex.soc.interconnect.packet import Arbiter, Depacketizer, Dispatcher, Packetizer
+from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
+
 from cores.tf.packet import K2MMPacket
 from cores.tf.tfg import TestFrameGenerator
 from cores.tf.tfc import TestFrameChecker
-from liteeth.common import eth_udp_user_description
-from litex.soc.interconnect.packet import (Arbiter, Depacketizer, Dispatcher,
-                                           Header, HeaderField, Packetizer)
-from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
-from migen import *
-
-from litex.soc.interconnect.stream import PipeValid, PipeReady
-
-class _SkidBuffer(Module):
-    def __init__(self, layout):
-        self.sink = sink = Endpoint(layout)
-        self.source = source = Endpoint(layout)
-
-        self.submodules.pv = pv = PipeValid(layout)
-        self.comb += self.sink.connect(pv.sink)
-
-        self.submodules.pr = pr = PipeReady(layout)
-        self.comb += [
-            pv.source.connect(pr.sink),
-            pr.source.connect(self.source)
-        ]
-
-# Add buffers on Endpoints (can be used to improve timings)
-class SkidBufferInsert(ModuleTransformer):
-    def __init__(self, endpoint_dict):
-        self.endpoint_dict = endpoint_dict
-
-    def transform_instance(self, submodule):
-        for name, direction in self.endpoint_dict.items():
-            endpoint = getattr(submodule, name)
-            # add buffer on sinks
-            if direction == DIR_SINK:
-                buf = _SkidBuffer(endpoint.description)
-                submodule.submodules += buf
-                setattr(submodule, name, buf.sink)
-                submodule.comb += buf.source.connect(endpoint)
-            # add buffer on sources
-            elif direction == DIR_SOURCE:
-                buf = _SkidBuffer(endpoint.description)
-                submodule.submodules += buf
-                submodule.comb += endpoint.connect(buf.sink)
-                setattr(submodule, name, buf.source)
-            else:
-                raise ValueError
+from util.epbuf import SkidBufferInsert
 
 class K2MMPacketTX(Module):
-            
     def __init__(self, udp_port=50000, dw=32):
-
-        class K2MMPacketizer(Packetizer):
-            def __init__(self, dw=32):
-                super().__init__(
-                    K2MMPacket.packet_description(dw),
-                    eth_udp_user_description(dw), 
-                    K2MMPacket.get_header(dw))
-
         self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(eth_udp_user_description(dw))
         
@@ -197,7 +150,7 @@ class _K2MMPacketParser(Module):
             self.source_packet_tx = ptx.source
             self.sink_packet_rx = prx.sink
 
-class _K2MMTester(Module):
+class K2MMTester(Module):
     def __init__(self, dw=32, max_latency=65536):
         self.sink   = sink   = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
@@ -245,8 +198,6 @@ class _K2MMTester(Module):
         ]
         
 from litex.soc.interconnect.stream import Endpoint, DIR_SOURCE, DIR_SINK
-from util.axi import EP2AXI
-
 class K2MM(Module):
     def __init__(self, dw=32, cd="sys"):
         
@@ -261,7 +212,7 @@ class K2MM(Module):
 
         # function modules
         self.submodules.probe = probe = K2MMProbe(dw=dw)
-        self.submodules.tester = tester = _K2MMTester(dw=dw)
+        self.submodules.tester = tester = K2MMTester(dw=dw)
         self.source_tester_status = Endpoint(tester.source_status.description)
         self.sink_tester_ctrl = Endpoint(tester.sink_ctrl.description)
         self.comb += [
@@ -296,66 +247,6 @@ class K2MM(Module):
             self.sink_tester_ctrl,
         ]
 
-class K2MMBlock(Module):
-    def __init__(self, cd="sys", platform=None, name="k2mm", **kwargs):
-        from migen.fhdl.verilog import list_targets
-        self.platform = platform
-        self.cd = cd
-        self.name = name
-        self.module_kwargs = kwargs
-        self.module_class = K2MM
-
-        self.mod = K2MM(**kwargs)
-        k2mm = K2MM(**kwargs)
-        io_intf = k2mm.get_ios()
-        
-        module2wrapper = dict()
-        # Duplicate Interfaces
-        for port in io_intf:
-            if isinstance(port, Endpoint):
-                setattr(self, port.name, Endpoint(port.description, name=port.name))
-                for subsig in getattr(self, port.name).flatten():
-                    module2wrapper[subsig.backtrace[-1][0]] = subsig
-            elif isinstance(port, Signal):
-                signame = port.backtrace[-1][0]
-                setattr(self, signame, Signal.like(port))
-                
-            else:
-                TypeError()
-        
-        k2mm = k2mm.get_fragment()
-        targets = list_targets(k2mm)
-
-        _ios = []
-        inst_to_flattened_var = []
-
-        for io in io_intf:
-            if isinstance(io, Record):
-                _ios += io.flatten()
-            elif isinstance(io, Signal):
-                _ios += [io]
-            
-            for _s in _ios:
-                _dir_prefix = "o_" if _s in targets else "i_"
-                var_name = _s.backtrace[-1][0]
-                inst_to_flattened_var += [(_dir_prefix + var_name, var_name)]
-        
-        inst_param = dict()
-        # property, signal_name 
-        for p, sn in inst_to_flattened_var:
-            inst_param[p] = module2wrapper[sn]
-        
-        self.inst_param = inst_param
-    
-    def do_finalize(self):
-        import os.path
-        from migen.fhdl.verilog import convert
-        verilog_filename = os.path.join(self.platform.output_dir, "gateware", self.name + ".v")
-        self.specials += Instance("k2mm",
-            i_sys_clk = ClockSignal(self.cd),
-            i_sys_rst = ResetSignal(self.cd),
-            **self.inst_param
-        )
 from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
 class K2MMControl(Module, AutoCSR):
     def __init__(self, k2mm : K2MM, dw=32):
@@ -385,11 +276,3 @@ class K2MMControl(Module, AutoCSR):
             self._probe_status.fields.ready.eq(self.source_ctrl.ready),
             self.source_ctrl.valid.eq(self._probe_ctrl.fields.enable & self._probe_ctrl.re)
         ]
-        
-if __name__ == "__main__":
-    
-    from migen.fhdl.verilog import convert, list_targets
-
-    k2mm = K2MMBlock()
-    convert(k2mm).write("k2mmblock.v")
-    
