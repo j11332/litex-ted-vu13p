@@ -60,6 +60,7 @@ class XilinxVIO(Module):
         sig : Signal
             `Signal` to probe
         """
+        sig.attr.add(("mr_ff", "true"))
         self.probe_out += [sig]
 
     def do_finalize(self):
