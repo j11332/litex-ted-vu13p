@@ -16,7 +16,7 @@ class _SkidBuffer(Module):
         ]
 
 # Add buffers on Endpoints (can be used to improve timings)
-class InsertSkidBuffer(ModuleTransformer):
+class SkidBufferInsert(ModuleTransformer):
     def __init__(self, endpoint_dict):
         self.endpoint_dict = endpoint_dict
 
