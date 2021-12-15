@@ -10,7 +10,6 @@ from litex_boards.xilinx import XilinxPlatform
 from litex_boards.utils import diff_clk
 
 """
-
 BF19  I2C_MAIN_RESET_B_LS
 BF20  I2C_MAIN_SCL_LS
 BF17  I2C_MAIN_SDA_LS
@@ -19,10 +18,10 @@ BF17  I2C_MAIN_SDA_LS
 _io = [
     # QSFP GTY TX/RX
     ("qsfp", 0,
-        Subsignal("rx_n", Pins("n3 m1 l3 k1")),
-        Subsignal("rx_p", Pins("n4 m2 l4 k2")),
-        Subsignal("tx_n", Pins("n8 m6 l8 k6")),
-        Subsignal("tx_p", Pins("n9 m7 l9 k7")),
+        Subsignal("rx_n", Pins("N3 M1 L3 K1")),
+        Subsignal("rx_p", Pins("N4 M2 L4 K2")),
+        Subsignal("tx_n", Pins("N8 M6 L8 K6")),
+        Subsignal("tx_p", Pins("N9 M7 L9 K7")),
         PlatformInfo({"quad" : "Quad_X1Y12", "channel" : ("X1Y48", "X1Y49", "X1Y50", "X1Y51")}),
     ),
     ("qsfp", 1,
@@ -43,12 +42,14 @@ _io = [
     # fs[1:0]        01          10
     # qsfpn_refclk1  156 MHz     161 MHz
     ("qsfp_fs", 0,
-        Subsignal("fs", Pins("AT20 AU22"), IOStandard("LVCMOS12")),
-        Subsignal("rst", Pins("AT22"), IOStandard("LVCMOS12"))
+        Subsignal("fs", Pins("AT20 AU22")),
+        Subsignal("rst", Pins("AT22")),
+        IOStandard("LVCMOS12"),
     ),
     ("qsfp_fs", 1,
-        Subsignal("fs", Pins("AR22 AU20"), IOStandard("LVCMOS12")),
-        Subsignal("rst", Pins("AR21"), IOStandard("LVCMOS12")),
+        Subsignal("fs", Pins("AR22 AU20")),
+        Subsignal("rst", Pins("AR21")),
+        IOStandard("LVCMOS12"),
     ),
     
     # QSFP sideband
