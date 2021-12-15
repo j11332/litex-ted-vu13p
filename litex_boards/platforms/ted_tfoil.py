@@ -20,6 +20,7 @@ _io = [
         Subsignal("rx_p", Pins("BG32 BF34 BJ32 BH34")),
         Subsignal("tx_n", Pins("BH40 BF40 BJ38 BG38")),
         Subsignal("tx_p", Pins("BH39 BF39 BJ37 BG37")),
+        PlatformInfo({"quad" : "Quad_X0Y0", "channel" : ("X0Y0", "X0Y1", "X0Y2", "X0Y3")}),
     ),
     
     # GTY121 / X0Y1
@@ -47,7 +48,7 @@ _io = [
     # GTY123 / X0Y3
     diff_clk("MGTREFCLK_123_", 0, "AV40", "AV39"), # Clock gen.
     diff_clk("MGTREFCLK_123_", 1, "AU42", "AU41"), # Coax.
-    ("GTY", 0,
+    ("GTY123", 0,
         Subsignal("rx_n", Pins("BE51 BD49 BC51 BB49")),
         Subsignal("rx_p", Pins("BE50 BD48 BC50 BB48")),
         Subsignal("tx_n", Pins("BE46 BD44 BC46 BB44")),
@@ -58,7 +59,7 @@ _io = [
     # GTY124 / X0Y4
     diff_clk("MGTREFCLK_124_", 0, "AT40", "AT39"), # UNIV
     diff_clk("MGTREFCLK_124_", 1, "AR42", "AT41"), # UNIV
-    ("GTY", 0,
+    ("GTY124", 0,
         Subsignal("rx_n", Pins("BA51 AY49 AW51 AV49")),
         Subsignal("rx_p", Pins("BA50 AY48 AW50 AV48")),
         Subsignal("tx_n", Pins("BA46 AY44 AW46 AV44")),
@@ -69,7 +70,7 @@ _io = [
     # GTY125 / X0Y5
     diff_clk("MGTREFCLK_125_", 0, "AP40", "AP39"), # Clock gen.
     diff_clk("MGTREFCLK_125_", 1, "AN42", "AN41"), # Coax.
-    ("GTY", 0,
+    ("GTY125", 0,
         Subsignal("rx_n", Pins("AU51 AT49 AR51 AP49")),
         Subsignal("rx_p", Pins("AU50 AT48 AR50 AP48")),
         Subsignal("tx_n", Pins("AU46 AT44 AR46 AP44")),
@@ -80,7 +81,7 @@ _io = [
     # GTY126 / X0Y6
     diff_clk("MGTREFCLK_126_", 0, "AM40", "AM39"), # UNIV
     diff_clk("MGTREFCLK_126_", 1, "AL42", "AL41"), # UNIV
-    ("GTY", 0,
+    ("GTY126", 0,
         Subsignal("rx_n", Pins("AN51 AM49 AL51 AK49")),
         Subsignal("rx_p", Pins("AN50 AM48 AL50 AK48")),
         Subsignal("tx_n", Pins("AN46 AM44 AL46 AK44")),
@@ -133,13 +134,13 @@ _io = [
     ),
 
     # GTY131 / X0Y11
-    diff_clk("MGTREFCLK_131_", 0, "", ""), # Clock gen.
-    diff_clk("MGTREFCLK_131_", 1, "", ""), # Coax.
+    diff_clk("MGTREFCLK_131_", 0, "U42", "U41"), # Clock gen.
+    diff_clk("MGTREFCLK_131_", 1, "T40", "T39"), # Coax.
     ("GTY131", 0,
-        Subsignal("rx_n", Pins("")),
-        Subsignal("rx_p", Pins("")),
-        Subsignal("tx_n", Pins("")),
-        Subsignal("tx_p", Pins("")),
+        Subsignal("rx_n", Pins("N51 M49 L51 K49")),
+        Subsignal("rx_p", Pins("N50 M48 L50 K48")),
+        Subsignal("tx_n", Pins("N46 M44 L46 K44")),
+        Subsignal("tx_p", Pins("N45 M43 L45 K43")),
         PlatformInfo({"quad" : "Quad_X0Y11", "channel" : ("X0Y44", "X0Y45", "X0Y46", "X0Y47")}),
     ),
 
