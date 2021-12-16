@@ -33,7 +33,7 @@ class XilinxVIO(Module):
         cd  : `ClockDomain` or `str`
             ClockDomain of `sig`
         """
-        _probe = Signal(len(sig), name=sig.backtrace[-1][0], reset_less=True)
+        _probe = Signal(len(sig), name_override=self.refname + "_" + sig.backtrace[-1][0], reset_less=True)
         _probe.attr.add(("mr_ff", "true"))
         self.comb += _probe.eq(sig)
         

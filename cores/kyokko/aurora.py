@@ -83,6 +83,7 @@ class _ResetSequencer(Module):
         self.comb += self.do_reset.eq(reduce(or_, self.triggers))
 
 class Aurora64b66b(Module, AutoCSR):
+    verilog_source_ready = False
     def __init__(
         self, platform, 
         pads, refclk,
@@ -100,11 +101,14 @@ class Aurora64b66b(Module, AutoCSR):
         # Reset sequencer
         self.reset_pb = Signal()
         self.pma_init = Signal()
-        
-        import os.path
-        srcdir = os.path.dirname(__file__)
-        platform.add_sources(srcdir, "aurora_reset_seq.sv")
-        
+
+        # 最初の一度だけソースを読み込みたい
+        if Aurora64b66b.verilog_source_ready is not True:
+            import os.path
+            srcdir = os.path.dirname(__file__)
+            platform.add_sources(srcdir, "aurora_reset_seq.sv")
+            Aurora64b66b.verilog_source_ready = True
+                
         _vio_reset = Signal(reset_less=True)
         _reset_seq_done = Signal(reset_less=True)
         _init_clk_locked = Signal(reset_less=True)
@@ -205,9 +209,11 @@ class Aurora64b66b(Module, AutoCSR):
         # Status Register
         mmcm_not_locked = Signal()
         from cores.xpm_fifo import XPMMultiReg
-        self.specials += XPMMultiReg(self.reset_pb, self._status.fields.reset_pb, odomain="sys", n=8)
-        self.specials += XPMMultiReg(self.pma_init, self._status.fields.pma_init, odomain="sys", n=8)
-        self.specials += XPMMultiReg(mmcm_not_locked, self._status.fields.mmcm_not_locked, odomain="sys", n=8)
+        self.specials += [
+            XPMMultiReg(self.reset_pb, self._status.fields.reset_pb, odomain="sys", n=4),
+            XPMMultiReg(self.pma_init, self._status.fields.pma_init, odomain="sys", n=4),
+            XPMMultiReg(mmcm_not_locked, self._status.fields.mmcm_not_locked, odomain="sys", n=4),
+        ]
 
         self.ip_params.update(
             i_s_axi_tx_tdata    = cdc_tx.source.data,

@@ -5,25 +5,20 @@ import argparse
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
-from migen.fhdl.structure import Cat
-from litex_boards.platforms.xilinx_vcu1525 import Platform
+
+# LiteX specific
+from litex.soc.cores.clock.common import *
+from litex.soc.cores.clock.xilinx_common import *
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
-from litex.soc.cores.bitbang import I2CMaster
-from litex.soc.cores.gpio import GPIOOut, GPIOIn
-from cores.i2c_multiport import I2CMasterMP
 
-from litedram.modules import MTA18ASF2G72PZ
-from litedram.phy import usddrphy
-from localbuilder import LocalBuilder
-
-from litex.soc.cores.clock.common import *
-from litex.soc.cores.clock.xilinx_common import *
-
+# Local source
+from litex_boards.platforms.xilinx_vcu1525 import Platform
 from cores.kyokko.aurora import Aurora64b66b
 from util.reset import XilinxStartupReset
+from localbuilder import LocalBuilder
 
 class _CRGBlock(Module):
     """_CRGBlock
