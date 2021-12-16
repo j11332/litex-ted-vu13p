@@ -9,6 +9,7 @@ endif
 OBJECTS = isr.o			\
 	  boot-helper.o		\
 	  boot.o			\
+		bootcmd.o    \
 	  helpers.o			\
 	  cmd_bios.o		\
 	  cmd_mem.o			\

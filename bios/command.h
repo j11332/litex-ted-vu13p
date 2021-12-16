@@ -9,17 +9,18 @@
 
 #define HIST_DEPTH	10	/* Used in string list, complete.c */
 
-#define SYSTEM_CMDS		0
-#define BOOT_CMDS		1
-#define MEM_CMDS		2
-#define SPIFLASH_CMDS	3
-#define I2C_CMDS		4
-#define LITEDRAM_CMDS	5
-#define LITEETH_CMDS	6
-#define LITESDCARD_CMDS	7
-#define LITESATA_CMDS	8
-#define NB_OF_GROUPS	9
-#define FIREFLY_CMDS    10
+#define SYSTEM_CMDS		   0
+#define BOOT_CMDS		     1
+#define MEM_CMDS		     2
+#define SPIFLASH_CMDS	   3
+#define I2C_CMDS		     4
+#define LITEDRAM_CMDS	   5
+#define LITEETH_CMDS	   6
+#define LITESDCARD_CMDS	 7
+#define LITESATA_CMDS	   8
+#define FIREFLY_CMDS     9
+#define NB_OF_GROUPS	  10
+
 
 typedef void (*cmd_handler)(int nb_params, char **params);
 
