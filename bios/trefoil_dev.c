@@ -11,7 +11,7 @@ void trefoil_clock_gen_reset(void)
 	DELAY_MS(500);
 	return;
 }
-define_init_func(trefoil_clock_gen_reset);
+// define_init_func(trefoil_clock_gen_reset);
 #endif
 
 #ifdef CSR_SB_TCA9548_BASE
@@ -23,5 +23,5 @@ void trefoil_iicio_reset(void)
     DELAY_MS(500);
 	return;
 }
-define_init_func(trefoil_iicio_reset);
+// define_init_func(trefoil_iicio_reset);
 #endif

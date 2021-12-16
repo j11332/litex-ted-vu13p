@@ -22,6 +22,7 @@
 #include <irq.h>
 
 #include "boot.h"
+#include "bootcmd.h"
 #include "readline.h"
 #include "helpers.h"
 #include "command.h"
@@ -188,6 +189,19 @@ printf("\n");
 #if !defined(TERM_MINI) && !defined(TERM_NO_HIST)
 	hist_init();
 #endif
+
+	while(1) {
+		if (getbootcmd(buffer, CMD_LINE_BUFFER_SIZE) != 0) {
+			printf("\n%s%s\n", PROMPT, buffer);
+			nb_params = get_param(buffer, &command, params);
+			cmd = command_dispatcher(command, nb_params, params);
+			if (!cmd)
+				printf("Command not found");
+		} else {
+			break;
+		}
+	}
+
 	printf("\n%s", PROMPT);
 	while(1) {
 		readline(buffer, CMD_LINE_BUFFER_SIZE);
