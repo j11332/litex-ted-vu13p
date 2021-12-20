@@ -219,25 +219,38 @@ class K2MM(Module):
             tester.source_status.connect(self.source_tester_status),
             self.sink_tester_ctrl.connect(tester.sink_ctrl)
         ]
-
+        self.submodules.record = record = K2MMRecord(dw)
+        
         # Arbitrate source endpoints
         self.submodules.arbiter = arbiter = Arbiter(
             [
+                record.source,
                 probe.source,
                 tester.source,
             ],
             packet.sink
         )
  
-        # Dispatcher
-        self.submodules.dispatcher = dispatcher = Dispatcher(
-            packet.source,
-            [
-                tester.sink,
-                probe.sink
-            ]
-        )
-        self.comb += [dispatcher.sel.eq(packet.source.pf)]
+        # Dispatcher                        
+        """ 
+                                        disp_test
+                                         +---+
+                                         |   |---> tester
+             disp_probe              +-->|   |                   
+                +---+                |   |   |---> probe        
+                |   |--probe_stream--+   +---+
+        RX  --->|   |     
+                |   |---------------> record
+                +---+
+        """
+        probe_stream = Endpoint(K2MMPacket.packet_user_description(dw))
+        self.submodules.disp_probe = disp_probe = Dispatcher(
+            packet.source, [record.sink, probe_stream])
+        self.comb += disp_probe.sel.eq(packet.source.pf | packet.source.pr)
+        
+        self.submodules.disp_test = disp_test = Dispatcher(
+            probe_stream, [tester.sink, probe.sink])
+        self.comb += disp_test.sel.eq(probe_stream.pf)
 
     def get_ios(self):
         return [
@@ -247,6 +260,11 @@ class K2MM(Module):
             self.sink_tester_ctrl,
         ]
 
+class K2MMRecord(Module):
+    def __init__(self, dw):
+        self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
+        self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
+        
 from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
 class K2MMControl(Module, AutoCSR):
     def __init__(self, k2mm : K2MM, dw=32):
