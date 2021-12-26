@@ -11,6 +11,7 @@ from cores.tf.packet import K2MMPacket
 from cores.tf.tfg import TestFrameGenerator
 from cores.tf.tfc import TestFrameChecker
 from util.epbuf import SkidBufferInsert
+from cores.tf.record import K2MMEbRecord
 
 class K2MMPacketTX(Module):
     def __init__(self, udp_port=50000, dw=32):
@@ -20,11 +21,10 @@ class K2MMPacketTX(Module):
         self.submodules.packetizer = packetizer = Packetizer(
             K2MMPacket.packet_description(dw),
             source.description,
-            K2MMPacket.get_header(dw)
-        )
+            K2MMPacket.get_header(dw))
         self.comb += [
             sink.connect(packetizer.sink, omit={"src_port", "dst_port", "ip_address", "length"}),
-            packetizer.sink.version.eq(K2MMPacket.version),
+            packetizer.sink.align.eq(log2_int(dw) // 8),
             packetizer.sink.magic.eq(K2MMPacket.magic),
             packetizer.sink.addr_size.eq(64),
             packetizer.sink.port_size.eq(dw // 8)
@@ -219,7 +219,7 @@ class K2MM(Module):
             tester.source_status.connect(self.source_tester_status),
             self.sink_tester_ctrl.connect(tester.sink_ctrl)
         ]
-        self.submodules.record = record = K2MMRecord(dw)
+        self.submodules.record = record = K2MMEbRecord(dw, 32)
         
         # Arbitrate source endpoints
         self.submodules.arbiter = arbiter = Arbiter(
@@ -260,11 +260,6 @@ class K2MM(Module):
             self.sink_tester_ctrl,
         ]
 
-class K2MMRecord(Module):
-    def __init__(self, dw):
-        self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
-        self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
-        
 from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
 class K2MMControl(Module, AutoCSR):
     def __init__(self, k2mm : K2MM, dw=32):

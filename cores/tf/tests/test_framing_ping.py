@@ -39,12 +39,22 @@ class _DUT(Module):
     @passive
     def print_latency(self):
         while True:
+            yield self.k2mm.source_tester_status.ready.eq(1)
             if ((yield self.k2mm.source_tester_status.valid) & (yield self.k2mm.source_tester_status.ready)):
                 print("Frame Length: {}, Latency: {} cycle[s]".format(
                         (yield self.k2mm.source_tester_status.length),
                         (yield self.k2mm.source_tester_status.latency),
                     )
                 )
+            # ［トラップ］一度制御を返さないと無限ループになる
+            yield
+
+    @passive
+    def print_ping(self):
+        while(True):
+            if (yield self.k2mm.sink_tester_ctrl.valid) & (yield self.k2mm.sink_tester_ctrl.ready):
+                print("ping:")
+                print((yield from record_dump(self.k2mm.sink_tester_ctrl)))
             yield
 
     def run_sim(self, **args):
@@ -53,6 +63,7 @@ class _DUT(Module):
             "sys" : [
                 self.tfg_test(),
                 self.print_latency(),
+                self.print_ping()
             ],
         }
         
@@ -61,8 +72,22 @@ class _DUT(Module):
         }
         
         run_simulation(self, clocks=_clocks, generators=_generators, **args)
-                
-if __name__ == "__main__":
-    
-    dut = _DUT(dw=256)
+
+def record_dump(r: Record):
+    dump = dict()
+    for i in r.layout:
+        if len(i) == 3:
+            _sn, _w, _d = i
+            _signal = getattr(r, _sn)
+            dump[_sn] = (yield _signal)
+        elif len(i) == 2:
+            _rn, _layout = i
+            _record = getattr(r, i[0])
+            dump[_rn] = (yield from record_dump(_record))
+        else:
+            raise TypeError
+    return dump
+
+if __name__ == "__main__":    
+    dut = _DUT(dw=32)
     dut.run_sim(vcd_name="framing_ping.vcd")

@@ -25,20 +25,23 @@ class K2MMPacket:
     header_length = 8
     header_fields = {
         "magic":     _HeaderField(0, 0, 16, user=False),
-        "version":   _HeaderField(2, 4,  4, user=False),
+        "align":     _HeaderField(2, 4,  4, user=False),
         "nr":        _HeaderField(2, 2,  1, user=True),
         "pr":        _HeaderField(2, 1,  1, user=True),
         "pf":        _HeaderField(2, 0,  1, user=True),
         "addr_size": _HeaderField(3, 0,  8, user=False),
         "port_size": _HeaderField(4, 0,  8, user=False)
     }
-    header = Header(header_fields, header_length, swap_field_bytes=True)
+    # header = Header(header_fields, header_length, swap_field_bytes=True)
 
     @staticmethod
     def get_header(dw, aligned=True):
+        if aligned is not True:
+            raise NotImplementedError
+        dw_bytes = dw // 8
         return _Header(
             __class__.header_fields,
-            length = dw // 8 if aligned else __class__.header_length,
+            length = dw_bytes if dw_bytes > __class__.header_length else __class__.header_length,
             swap_field_bytes = True)
     
     @staticmethod
@@ -63,3 +66,49 @@ class K2MMPacket:
         ]
         return EndpointDescription(payload_layout, param_layout)
 
+class EbRecord:
+    @staticmethod
+    def header(dw):
+        fields = {
+            "bca":         _HeaderField(0, 0, 1),
+            "rca":         _HeaderField(0, 1, 1),
+            "rff":         _HeaderField(0, 2, 1),
+            "cyc":         _HeaderField(0, 4, 1),
+            "wca":         _HeaderField(0, 5, 1),
+            "wff":         _HeaderField(0, 6, 1),
+            "wcount":      _HeaderField(2, 0, 8),
+            "rcount":      _HeaderField(3, 0, 8),
+            # Variable part
+            "byte_enable": _HeaderField(4, 0, dw//8),
+        }
+
+        # 64 bit alignment
+        ALIGN=8
+        be_length_bits = (dw // 8)
+        be_length_bytes = be_length_bits // 8
+        len_bytes = 4 + be_length_bytes
+        pad_bytes = ALIGN - (len_bytes % ALIGN)
+        return _Header(fields, len_bytes + pad_bytes, swap_field_bytes=True)
+
+    @staticmethod
+    def description(dw):
+        param_layout = __class__.header(dw).get_layout()
+        payload_layout = [
+            ("data", dw),
+        ]
+        return EndpointDescription(payload_layout, param_layout)
+    
+class EbRecordMM:
+    @staticmethod
+    def description(dw, aw=64):
+        param_layout = [
+            ("we",            1),
+            ("count",         8),
+            ("base_addr",    aw),
+            ("be",        dw//8)
+        ]
+        payload_layout = [
+            ("data", dw),
+            ("addr", dw)
+        ]
+        return EndpointDescription(payload_layout, param_layout)
