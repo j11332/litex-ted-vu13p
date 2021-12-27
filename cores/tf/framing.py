@@ -5,15 +5,17 @@ from migen import *
 from litex.soc.interconnect.csr import CSRStatus
 from liteeth.common import eth_udp_user_description
 from litex.soc.interconnect.packet import Arbiter, Depacketizer, Dispatcher, Packetizer
-from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
+from litex.soc.interconnect.packet import Status as PacketStatusTracker
 
+from litex.soc.interconnect.stream import Endpoint, EndpointDescription, SyncFIFO
+from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
 from cores.tf.packet import K2MMPacket
 from cores.tf.tfg import TestFrameGenerator
 from cores.tf.tfc import TestFrameChecker
 from util.epbuf import SkidBufferInsert
 from cores.tf.record import K2MMEbRecord
 
-class K2MMPacketTX(Module):
+class _K2MMPacketTX(Module):
     def __init__(self, udp_port=50000, dw=32):
         self.sink = sink = Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = Endpoint(eth_udp_user_description(dw))
@@ -23,31 +25,44 @@ class K2MMPacketTX(Module):
             source.description,
             K2MMPacket.get_header(dw))
         self.comb += [
-            sink.connect(packetizer.sink, omit={"src_port", "dst_port", "ip_address", "length"}),
+            sink.connect(packetizer.sink, omit={"first", "src_port", "dst_port", "ip_address", "length"}),
             packetizer.sink.align.eq(log2_int(dw) // 8),
             packetizer.sink.magic.eq(K2MMPacket.magic),
             packetizer.sink.addr_size.eq(64),
             packetizer.sink.port_size.eq(dw // 8)
         ]
-        
+                
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
+            self.source.first.eq(1),
             If(packetizer.source.valid,
                 NextState("SEND")
             )
         )
+        total_length = Signal(source.length.nbits, reset_less=True)
+        self.comb += total_length.eq(sink.length + K2MMPacket.get_header(dw).length)
         fsm.act("SEND",
-            packetizer.source.connect(source),
+            packetizer.source.connect(source, omit={"first"}),
             source.src_port.eq(udp_port),
             source.dst_port.eq(udp_port),
             source.ip_address.eq(sink.ip_address),
-            source.length.eq(sink.length + K2MMPacket.get_header(dw).length),
+            source.length.eq(total_length),
+            If(source.last, 
+                # Calculate last_be based on length field
+                # source.last_be.eq(Replicate(0b1, total_length[dw//8:0]))
+                # Or, just pass through
+                Case(sink.last_be == 0, 
+                    { 0: source.last_be.eq(sink.last_be), 1: source.last_be.eq(Replicate(0b1, dw//8))}
+                )
+            ).Else(
+                source.last_be.eq(Replicate(0b1, dw//8))
+            ),
             If(source.valid & source.last & source.ready,
                 NextState("IDLE")
             )
         )
 
-class K2MMPacketRX(Module):
+class _K2MMPacketRX(Module):
     def __init__(self, dw=32):
         self.sink = sink = Endpoint(eth_udp_user_description(dw))
         self.source = source = Endpoint(K2MMPacket.packet_user_description(dw))
@@ -72,7 +87,7 @@ class K2MMPacketRX(Module):
         )
         self.comb += [
             # FIXME: flag for "user" header fields
-            depacketizer.source.connect(source, keep={"last", "pf", "pr", "nr", "data"}),
+            depacketizer.source.connect(source, keep={"first", "last", "pf", "pr", "nr", "data"}),
             source.src_port.eq(sink.src_port),
             source.dst_port.eq(sink.dst_port),
             source.ip_address.eq(sink.ip_address),
@@ -123,11 +138,11 @@ class _K2MMPacketParser(Module):
     def __init__(self, dw=32, bufferrized=True, fifo_depth=256):
         
         # TX/RX packet
-        ptx = K2MMPacketTX(dw=dw)
+        ptx = _K2MMPacketTX(dw=dw)
         ptx = SkidBufferInsert({"sink": DIR_SINK})(ptx)
         self.submodules.ptx = ptx
 
-        prx = K2MMPacketRX(dw=dw)
+        prx = _K2MMPacketRX(dw=dw)
         prx = SkidBufferInsert({"source": DIR_SOURCE})(prx)
         self.submodules.prx = prx
         
@@ -198,8 +213,8 @@ class K2MMTester(Module):
         ]
         
 from litex.soc.interconnect.stream import Endpoint, DIR_SOURCE, DIR_SINK
-class K2MM(Module):
-    def __init__(self, dw=32, cd="sys"):
+class K2MM(Module, AutoCSR):
+    def __init__(self, dw=32, cd="sys", id=0):
         
         # Packet parser
         self.submodules.packet = packet = _K2MMPacketParser(dw=dw)
@@ -219,12 +234,12 @@ class K2MM(Module):
             tester.source_status.connect(self.source_tester_status),
             self.sink_tester_ctrl.connect(tester.sink_ctrl)
         ]
-        self.submodules.record = record = K2MMEbRecord(dw, 32)
+        self.submodules.rcd = rcd = K2MMEbRecord(dw, 32, id=id)
         
         # Arbitrate source endpoints
         self.submodules.arbiter = arbiter = Arbiter(
             [
-                record.source,
+                rcd.source,
                 probe.source,
                 tester.source,
             ],
@@ -245,7 +260,7 @@ class K2MM(Module):
         """
         probe_stream = Endpoint(K2MMPacket.packet_user_description(dw))
         self.submodules.disp_probe = disp_probe = Dispatcher(
-            packet.source, [record.sink, probe_stream])
+            packet.source, [rcd.sink, probe_stream])
         self.comb += disp_probe.sel.eq(packet.source.pf | packet.source.pr)
         
         self.submodules.disp_test = disp_test = Dispatcher(
@@ -260,7 +275,7 @@ class K2MM(Module):
             self.sink_tester_ctrl,
         ]
 
-from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
+
 class K2MMControl(Module, AutoCSR):
     def __init__(self, k2mm : K2MM, dw=32):
         self.source_ctrl = Endpoint(k2mm.sink_tester_ctrl.description)

@@ -4,6 +4,6 @@ def kyokkoStreamDesc(lanes=4):
     return EndpointDescription(
         [
             ("data", 64 * lanes),
-            # ("keep", (64 * lanes) // 8)
+            ("last_be", (64 * lanes) // 8)
         ]
     )

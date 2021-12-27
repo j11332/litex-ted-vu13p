@@ -15,9 +15,11 @@ class _DUT(Module):
             k2mm.source_packet_tx.connect(k2mm_peer.sink_packet_rx),
             k2mm_peer.source_packet_tx.connect(k2mm.sink_packet_rx)
         ]
-
+        self.status_count = 0
+        
     def put_request(self, len):
         ep = self.k2mm.sink_tester_ctrl
+        yield self.k2mm.source_tester_status.ready.eq(1)
         yield ep.length.eq(len)
         yield ep.valid.eq(1)
         yield
@@ -29,23 +31,24 @@ class _DUT(Module):
             yield
         
     def tfg_test(self):
-        _test_frame_beats = [
-            0, 1, 2, 10, 50, 100
-        ]
+        _test_frame_beats = [ 0, 1, 2, 10 ]
         for l in _test_frame_beats:
             yield from self.put_request(l)
         yield
+        
+        while(self.status_count < 4):
+            yield
 
     @passive
     def print_latency(self):
         while True:
-            yield self.k2mm.source_tester_status.ready.eq(1)
             if ((yield self.k2mm.source_tester_status.valid) & (yield self.k2mm.source_tester_status.ready)):
                 print("Frame Length: {}, Latency: {} cycle[s]".format(
                         (yield self.k2mm.source_tester_status.length),
                         (yield self.k2mm.source_tester_status.latency),
                     )
                 )
+                self.status_count += 1
             # ［トラップ］一度制御を返さないと無限ループになる
             yield
 
@@ -53,8 +56,7 @@ class _DUT(Module):
     def print_ping(self):
         while(True):
             if (yield self.k2mm.sink_tester_ctrl.valid) & (yield self.k2mm.sink_tester_ctrl.ready):
-                print("ping:")
-                print((yield from record_dump(self.k2mm.sink_tester_ctrl)))
+                print("ping:" + str((yield from record_dump(self.k2mm.sink_tester_ctrl))))
             yield
 
     def run_sim(self, **args):
@@ -89,5 +91,5 @@ def record_dump(r: Record):
     return dump
 
 if __name__ == "__main__":    
-    dut = _DUT(dw=32)
+    dut = _DUT(dw=256)
     dut.run_sim(vcd_name="framing_ping.vcd")

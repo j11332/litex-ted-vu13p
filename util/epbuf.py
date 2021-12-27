@@ -6,12 +6,9 @@ class _SkidBuffer(Module):
         self.sink = sink = Endpoint(layout)
         self.source = source = Endpoint(layout)
 
-        self.submodules.pv = pv = PipeValid(layout)
-        self.comb += self.sink.connect(pv.sink)
-
         self.submodules.pr = pr = PipeReady(layout)
         self.comb += [
-            pv.source.connect(pr.sink),
+            self.sink.connect(pr.sink),
             pr.source.connect(self.source)
         ]
 

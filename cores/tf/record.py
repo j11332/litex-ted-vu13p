@@ -1,7 +1,7 @@
 from migen import *
 from litex.soc.interconnect.stream import Endpoint
 from litex.soc.interconnect.packet import *
-
+from litex.soc.interconnect.csr_eventmanager import AutoCSR, CSRStatus, CSRStorage, CSRField
 from cores.tf.packet import K2MMPacket, EbRecord, EbRecordMM
 
 class EbRecordReceiver(Module):
@@ -262,53 +262,71 @@ class _EbRecordWbSlave(Module):
                 NextState("IDLE")
             )
         )
+from litepcie.common import get_bar_mask, phy_layout, MB
+from litepcie.core import LitePCIeEndpoint
+from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
+from cores.dma.mm2s import DMARam
 
-class K2MMEbRecord(Module):
-    def __init__(self, dw, aw, endianness="big", buffer_depth=4, mode="master"):
+class _StubPHY(Module):
+    def __init__(self, data_width, id, bar0_size, debug):
+        self.data_width = data_width
+        self.id = id
+        
+        self.phy_sink = stream.Endpoint(phy_layout(data_width))
+        self.phy_source = stream.Endpoint(phy_layout(data_width))
+        
+        # Application I/F
+        self.sink = stream.Endpoint(phy_layout(data_width))
+        self.source = stream.Endpoint(phy_layout(data_width))
+
+        self.bar0_size = bar0_size
+        self.bar0_mask = get_bar_mask(bar0_size)
+
+        self.max_request_size = Signal(10, reset=512)
+        self.max_payload_size = Signal(8, reset=128)
+
+        self.submodules.fifo_sink = stream.SyncFIFO(phy_layout(data_width), depth=16)
+        self.submodules.fifo_source = stream.SyncFIFO(phy_layout(data_width), depth=16)
+        self.comb += [
+            self.fifo_sink.source.connect(self.phy_source),
+            self.phy_sink.connect(self.fifo_source.sink),
+            self.sink.connect(self.fifo_sink.sink),
+            self.fifo_source.source.connect(self.source),
+        ]
+    
+# DMA Memory
+class DMAMem(Module, AutoCSR):
+    def __init__(self, data_width, id, test_size, phy_debug = False):
+        self.submodules.phy = phy = _StubPHY(data_width, id, 1 * MB, phy_debug)
+        self.phy_source, self.phy_sink = phy.phy_source, phy.phy_sink
+        self.submodules.endpoint = endpoint = LitePCIeEndpoint(phy)
+        
+        port = endpoint.crossbar.get_slave_port(lambda a: 1)
+        self.submodules.dmaram = dmaram = DMARam(data_width, test_size)
+        self.comb += [
+            dmaram.source.connect(port.source),
+            port.sink.connect(dmaram.sink)
+        ]
+        dma_reader_port = endpoint.crossbar.get_master_port(read_only=True)
+        dma_writer_port = endpoint.crossbar.get_master_port(write_only=True)
+
+        self.submodules.dma_reader = LitePCIeDMAReader(self.endpoint, dma_reader_port)
+        self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, dma_writer_port)
+        self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
+
+class K2MMEbRecord(Module, AutoCSR):
+    def __init__(self, dw, aw, id=0, endianness="big", buffer_depth=4, mode="master"):
         self.sink   = sink   = stream.Endpoint(K2MMPacket.packet_user_description(dw))
         self.source = source = stream.Endpoint(K2MMPacket.packet_user_description(dw))
 
         # # #
-
-        # Receive record, decode it and generate mmap stream
-        self.submodules.depacketizer = depacketizer = _EbRecordDepacketizer(dw)
-        self.submodules.receiver = receiver = EbRecordReceiver(dw, aw, buffer_depth)
+        
+        self.submodules.dmamem = dmamem = DMAMem(dw, id, 1024)
         self.comb += [
-            sink.connect(depacketizer.sink),
-            depacketizer.source.connect(receiver.sink)
-        ]
-        if endianness == "big":
-            self.comb += receiver.sink.data.eq(reverse_bytes(depacketizer.source.data))
-
-        # Save last ip address
-        first = Signal(reset=1)
-        last_ip_address = Signal(32, reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                If(first, last_ip_address.eq(sink.ip_address)),
-                first.eq(sink.last)
-            )
-        ]
-
-        # Receive MMAP stream, encode it and send records
-        self.submodules.sender     = sender     = EbRecordSender(dw, aw, buffer_depth)
-        self.submodules.packetizer = packetizer = _EbRecordPacketizer(dw)
-        self.comb += [
-            sender.source.connect(packetizer.sink),
-            packetizer.source.connect(source),
-            source.length.eq(EbRecord.header(dw).length +
-                (sender.source.wcount != 0) * (aw // 8) + sender.source.wcount * (dw // 8) +
-                (sender.source.rcount != 0) * (aw // 8) + sender.source.rcount * (dw // 8)),
-            source.ip_address.eq(last_ip_address)
-        ]
-        if endianness == "big":
-            self.comb += packetizer.sink.data.eq(reverse_bytes(sender.source.data))
-
-        self.submodules.wb = wb = {
-            "master" : _EbRecordWbMaster,
-            "slave"  : _EbRecordWbSlave
-        }[mode](dw, aw)
-        self.comb += [
-            receiver.source.connect(wb.sink),
-            wb.source.connect(sender.sink),
+            dmamem.phy_source.connect(source, keep={"valid", "ready", "last", "first"}),
+            source.data.eq(dmamem.phy_source.dat),
+            source.last_be.eq(dmamem.phy_source.be),
+            sink.connect(dmamem.phy_sink, keep={"valid", "ready", "last", "first"}),
+            dmamem.phy_sink.dat.eq(sink.data),
+            dmamem.phy_sink.be.eq(sink.last_be),
         ]

@@ -1,4 +1,5 @@
 #include <generated/csr.h>
+#include <generated/soc.h>
 #include "bootcmd.h"
 
 const char *bootcmds = {
@@ -8,7 +9,12 @@ const char *bootcmds = {
   "set_si5341_n_divider 1 0 0x015 0x80000000 0x84000000\n"  // set GTY 2xx RefClk 161.1328125MHz
   "reset_tca9548\n"  // reset I2C MUX
   "reset_firefly\n"  // reset FireFly optical module
-#else
+#elif defined(CONFIG_SIM_DMA_TEST)
+  "mem_write 0xf0002804 256\n"
+  "mem_write 0xf0002808 0\n"
+  "mem_write 0xf000280c 1 1\n"
+  "mem_write 0xf0002800 1 1\n"
+#else 
   ""
 #endif
 };

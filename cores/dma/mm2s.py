@@ -97,7 +97,6 @@ class DMARam(Module):
                 port.adr.eq(start_addr + offset + 1),
                 NextValue(offset, offset + 1),
                 If(self.source.last, 
-                   NextValue(self.source.valid, 0), 
                    NextState("Idle")),
             ).Else(
                 port.adr.eq(start_addr + offset)
